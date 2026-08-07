@@ -1,9 +1,32 @@
 services:
+  database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-devhub}
+      POSTGRES_USER: ${POSTGRES_USER:-devhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devhub}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
+    environment:
+      DATABASE_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-devhub}
+      DATABASE_USERNAME: ${POSTGRES_USER:-devhub}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-devhub}
     ports:
       - "8080:8080"
+    depends_on:
+      database:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -19,3 +42,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  postgres-data:
