@@ -19,6 +19,16 @@ The frontend is available at `http://localhost:5173` and proxies `/api` requests
 
 Override the local database credentials by creating a `.env` file from `.env.example` before starting Docker.
 
+## Backend API
+
+The backend exposes CRUD endpoints for projects and their stored information:
+
+- `/api/projects`
+- `/api/projects/{projectId}/notes`
+- `/api/projects/{projectId}/code-snippets`
+
+Each resource supports `POST`, `GET`, `PUT`, and `DELETE` where applicable. Code snippets also accept the shorter `/snippets` path. Deleting a project removes its notes and code snippets.
+
 ## Build
 
 ```powershell
