@@ -2,6 +2,7 @@ export interface Project {
   id: number
   name: string
   description: string
+  system: boolean
   createdAt: string
   updatedAt: string
 }

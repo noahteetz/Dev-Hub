@@ -15,7 +15,7 @@ import org.springframework.stereotype.Repository;
 public class ProjectRepository {
 
 	private static final String SELECT_COLUMNS = """
-			SELECT id, name, description, created_at, updated_at
+			SELECT id, name, description, is_system, created_at, updated_at
 			FROM projects
 			""";
 
@@ -26,14 +26,19 @@ public class ProjectRepository {
 	}
 
 	public Project create(String name, String description) {
+		return create(name, description, false);
+	}
+
+	public Project create(String name, String description, boolean system) {
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO projects (name, description) VALUES (?, ?)",
+					"INSERT INTO projects (name, description, is_system) VALUES (?, ?, ?)",
 					new String[]{"id"}
 			);
 			statement.setString(1, name);
 			statement.setString(2, description);
+			statement.setBoolean(3, system);
 			return statement;
 		}, keyHolder);
 
@@ -47,7 +52,17 @@ public class ProjectRepository {
 	}
 
 	public List<Project> findAll() {
-		return jdbcTemplate.query(SELECT_COLUMNS + " ORDER BY id DESC", ProjectRepository::mapRow);
+		return jdbcTemplate.query(
+				SELECT_COLUMNS + " ORDER BY is_system DESC, id DESC",
+				ProjectRepository::mapRow
+		);
+	}
+
+	public List<Project> findSystemProjects() {
+		return jdbcTemplate.query(
+				SELECT_COLUMNS + " WHERE is_system = TRUE",
+				ProjectRepository::mapRow
+		);
 	}
 
 	public Optional<Project> findById(long id) {
@@ -76,6 +91,7 @@ public class ProjectRepository {
 				resultSet.getLong("id"),
 				resultSet.getString("name"),
 				resultSet.getString("description"),
+				resultSet.getBoolean("is_system"),
 				resultSet.getTimestamp("created_at").toInstant(),
 				resultSet.getTimestamp("updated_at").toInstant()
 		);

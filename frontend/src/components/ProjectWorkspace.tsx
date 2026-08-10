@@ -355,7 +355,7 @@ function WorkspaceHeader({
         </Typography>
       </Box>
 
-      {project ? (
+      {project && !project.system ? (
         <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
           <Button
             startIcon={<EditOutlinedIcon />}
@@ -394,7 +394,7 @@ function WorkspaceHeader({
             </IconButton>
           </Tooltip>
         </Stack>
-      ) : (
+      ) : !project ? (
         <Button
           startIcon={<AddRoundedIcon />}
           sx={{
@@ -415,7 +415,7 @@ function WorkspaceHeader({
         >
           New project
         </Button>
-      )}
+      ) : null}
     </Toolbar>
   )
 }
@@ -465,7 +465,8 @@ export function ProjectWorkspace({
     )
   }
 
-  const items = activeTab === 'notes' ? notes : snippets
+  const isSystemSection = project.system
+  const items = activeTab === 'notes' || isSystemSection ? notes : snippets
 
   return (
     <Box component="main" sx={{ flex: 1, minWidth: 0 }}>
@@ -491,7 +492,9 @@ export function ProjectWorkspace({
           }}
         >
           <Metric icon={<DescriptionOutlinedIcon fontSize="small" />} label="Notes" value={notes.length} />
-          <Metric icon={<CodeOutlinedIcon fontSize="small" />} label="Code snippets" value={snippets.length} />
+          {!isSystemSection ? (
+            <Metric icon={<CodeOutlinedIcon fontSize="small" />} label="Code snippets" value={snippets.length} />
+          ) : null}
           <Metric
             icon={<CalendarTodayOutlinedIcon fontSize="small" />}
             label="Last updated"
@@ -528,12 +531,14 @@ export function ProjectWorkspace({
               label={`Notes ${notes.length}`}
               value="notes"
             />
-            <Tab
-              icon={<CodeOutlinedIcon fontSize="small" />}
-              iconPosition="start"
-              label={`Code snippets ${snippets.length}`}
-              value="snippets"
-            />
+            {!isSystemSection ? (
+              <Tab
+                icon={<CodeOutlinedIcon fontSize="small" />}
+                iconPosition="start"
+                label={`Code snippets ${snippets.length}`}
+                value="snippets"
+              />
+            ) : null}
           </Tabs>
 
           <Box
@@ -556,10 +561,12 @@ export function ProjectWorkspace({
             >
               <Box>
                 <Typography sx={{ fontWeight: 750 }}>
-                  {activeTab === 'notes' ? 'Notes and ideas' : 'Reusable code'}
+                  {isSystemSection ? project.name : activeTab === 'notes' ? 'Notes and ideas' : 'Reusable code'}
                 </Typography>
                 <Typography color="text.secondary" variant="body2">
-                  {activeTab === 'notes'
+                  {isSystemSection
+                    ? project.description
+                    : activeTab === 'notes'
                     ? 'Keep context close to the work.'
                     : 'Save commands and snippets you want to find again.'}
                 </Typography>
@@ -579,9 +586,9 @@ export function ProjectWorkspace({
                   },
                 }}
                 variant="text"
-                onClick={activeTab === 'notes' ? onCreateNote : onCreateSnippet}
+                onClick={activeTab === 'notes' || isSystemSection ? onCreateNote : onCreateSnippet}
               >
-                {activeTab === 'notes' ? 'Add note' : 'Add snippet'}
+                {activeTab === 'notes' || isSystemSection ? 'Add note' : 'Add snippet'}
               </Button>
             </Stack>
 
@@ -590,24 +597,24 @@ export function ProjectWorkspace({
             {!loading && items.length === 0 ? (
               <EmptyState
                 description={
-                  activeTab === 'notes'
+                  activeTab === 'notes' || isSystemSection
                     ? 'Write down the decisions and details you do not want to lose.'
                     : 'Store a useful command or code block for the next time you need it.'
                 }
-                actionLabel={activeTab === 'notes' ? 'Add a note' : 'Add a snippet'}
+                actionLabel={activeTab === 'notes' || isSystemSection ? 'Add a note' : 'Add a snippet'}
                 icon={
-                  activeTab === 'notes' ? (
+                  activeTab === 'notes' || isSystemSection ? (
                     <DescriptionOutlinedIcon sx={{ color: 'primary.main', fontSize: 38 }} />
                   ) : (
                     <CodeOutlinedIcon sx={{ color: 'primary.main', fontSize: 38 }} />
                   )
                 }
-                onAction={activeTab === 'notes' ? onCreateNote : onCreateSnippet}
-                title={activeTab === 'notes' ? 'No notes yet' : 'No snippets yet'}
+                onAction={activeTab === 'notes' || isSystemSection ? onCreateNote : onCreateSnippet}
+                title={activeTab === 'notes' || isSystemSection ? 'No notes yet' : 'No snippets yet'}
               />
             ) : null}
 
-            {!loading && items.length > 0 && activeTab === 'notes' ? (
+            {!loading && items.length > 0 && (activeTab === 'notes' || isSystemSection) ? (
               <Stack spacing={1.5}>
                 {notes.map((note) => (
                   <NoteCard
@@ -620,7 +627,7 @@ export function ProjectWorkspace({
               </Stack>
             ) : null}
 
-            {!loading && items.length > 0 && activeTab === 'snippets' ? (
+            {!loading && items.length > 0 && activeTab === 'snippets' && !isSystemSection ? (
               <Stack spacing={1.5}>
                 {snippets.map((snippet) => (
                   <SnippetCard
@@ -646,7 +653,9 @@ export function ProjectWorkspace({
           }}
         >
           <MoreHorizRoundedIcon fontSize="small" />
-          <Typography variant="caption">Everything here stays attached to this project</Typography>
+          <Typography variant="caption">
+            {isSystemSection ? 'Everything here stays in this personal space' : 'Everything here stays attached to this project'}
+          </Typography>
         </Stack>
       </Box>
     </Box>

@@ -6,6 +6,7 @@ public record Project(
 		Long id,
 		String name,
 		String description,
+		boolean system,
 		Instant createdAt,
 		Instant updatedAt
 ) {

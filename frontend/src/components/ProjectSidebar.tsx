@@ -19,6 +19,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import { Fragment } from 'react'
 import type { Project } from '../types'
 
 export type ApiState = 'loading' | 'ready' | 'error'
@@ -48,6 +49,10 @@ export function ProjectSidebar({
   onDeleteProject,
   onRetry,
 }: ProjectSidebarProps) {
+  const systemProjects = projects.filter((project) => project.system)
+  const regularProjects = projects.filter((project) => !project.system)
+  const visibleProjects = [...systemProjects, ...regularProjects]
+
   return (
     <Paper
       component="aside"
@@ -124,10 +129,10 @@ export function ProjectSidebar({
           sx={{ fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }}
           variant="caption"
         >
-          Projects
+          Spaces
         </Typography>
         <Chip
-          label={projects.length}
+          label={systemProjects.length}
           size="small"
           sx={{ bgcolor: 'action.hover', fontWeight: 700 }}
         />
@@ -155,18 +160,37 @@ export function ProjectSidebar({
           </Stack>
         ) : null}
 
-        {apiState === 'ready' && projects.length === 0 ? (
+        {apiState === 'ready' && regularProjects.length === 0 ? (
           <Typography color="text.secondary" sx={{ px: 1.25, py: 2 }} variant="body2">
             Create a project to get started.
           </Typography>
         ) : null}
 
-        {projects.map((project) => (
-          <ListItem
-            disablePadding
-            key={project.id}
-            secondaryAction={
+        {visibleProjects.map((project, index) => (
+          <Fragment key={project.id}>
+            {!project.system && index === systemProjects.length ? (
               <Stack
+                direction="row"
+                sx={{ alignItems: 'center', justifyContent: 'space-between', pb: 1, pt: 2.5, px: 1.25 }}
+              >
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }}
+                  variant="caption"
+                >
+                  Projects
+                </Typography>
+                <Chip
+                  label={regularProjects.length}
+                  size="small"
+                  sx={{ bgcolor: 'action.hover', fontWeight: 700 }}
+                />
+              </Stack>
+            ) : null}
+            <ListItem
+            disablePadding
+            secondaryAction={
+              project.system ? undefined : <Stack
                 className="project-actions"
                 direction="row"
                 spacing={0.25}
@@ -223,7 +247,7 @@ export function ProjectSidebar({
               selected={project.id === selectedProjectId}
               sx={{
                 borderRadius: 1,
-                pr: 11,
+                pr: project.system ? 2 : 11,
                 transition: 'background-color 160ms ease, transform 160ms ease',
                 '&:hover': {
                   bgcolor: 'rgba(91, 97, 232, 0.05)',
@@ -253,7 +277,7 @@ export function ProjectSidebar({
               </Avatar>
               <ListItemText
                 primary={project.name}
-                secondary={project.description || 'No description'}
+                secondary={project.description || (project.system ? 'Personal space' : 'No description')}
                 slotProps={{
                   primary: {
                     noWrap: true,
@@ -268,7 +292,8 @@ export function ProjectSidebar({
                 }}
               />
             </ListItemButton>
-          </ListItem>
+            </ListItem>
+          </Fragment>
         ))}
       </List>
 
