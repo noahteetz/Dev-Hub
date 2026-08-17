@@ -1,6 +1,8 @@
 package com.devhub.backend.service;
 
 import com.devhub.backend.exception.InvalidRequestException;
+import java.net.URI;
+import java.net.URISyntaxException;
 
 final class RequestValidation {
 
@@ -41,5 +43,22 @@ final class RequestValidation {
 
 	static String optionalLanguage(String value) {
 		return value == null || value.isBlank() ? "text" : value.trim();
+	}
+
+	static String optionalUrl(String value, String fieldName) {
+		return value == null || value.isBlank() ? "" : requiredUrl(value, fieldName);
+	}
+
+	static String requiredUrl(String value, String fieldName) {
+		String url = required(value, fieldName);
+		try {
+			URI uri = new URI(url);
+			if (!uri.isAbsolute() || !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))) {
+				throw new InvalidRequestException(fieldName + " must be an http or https URL");
+			}
+			return url;
+		} catch (URISyntaxException exception) {
+			throw new InvalidRequestException(fieldName + " must be a valid URL");
+		}
 	}
 }

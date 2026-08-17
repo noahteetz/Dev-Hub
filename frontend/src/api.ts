@@ -1,10 +1,15 @@
 import type {
   CodeSnippet,
   CodeSnippetInput,
+  Idea,
+  IdeaInput,
   Note,
   NoteInput,
   Project,
   ProjectInput,
+  Tag,
+  Todo,
+  TodoInput,
 } from './types'
 
 interface ApiErrorPayload {
@@ -97,6 +102,52 @@ export const api = {
       }),
     remove: (projectId: number, snippetId: number) =>
       request<void>(`/api/projects/${projectId}/code-snippets/${snippetId}`, {
+        method: 'DELETE',
+      }),
+  },
+  tags: {
+    list: () => request<Tag[]>('/api/tags'),
+  },
+  ideas: {
+    list: (projectId: number) => request<Idea[]>(`/api/projects/${projectId}/ideas`),
+    create: (projectId: number, input: IdeaInput) =>
+      request<Idea>(`/api/projects/${projectId}/ideas`, {
+        method: 'POST',
+        body: jsonBody(input),
+      }),
+    update: (projectId: number, ideaId: number, input: IdeaInput) =>
+      request<Idea>(`/api/projects/${projectId}/ideas/${ideaId}`, {
+        method: 'PUT',
+        body: jsonBody(input),
+      }),
+    convert: (projectId: number, ideaId: number) =>
+      request<Todo>(`/api/projects/${projectId}/ideas/${ideaId}/convert`, {
+        method: 'POST',
+      }),
+    remove: (projectId: number, ideaId: number) =>
+      request<void>(`/api/projects/${projectId}/ideas/${ideaId}`, {
+        method: 'DELETE',
+      }),
+  },
+  todos: {
+    list: (projectId: number) => request<Todo[]>(`/api/projects/${projectId}/todos`),
+    create: (projectId: number, input: TodoInput) =>
+      request<Todo>(`/api/projects/${projectId}/todos`, {
+        method: 'POST',
+        body: jsonBody(input),
+      }),
+    update: (projectId: number, todoId: number, input: TodoInput) =>
+      request<Todo>(`/api/projects/${projectId}/todos/${todoId}`, {
+        method: 'PUT',
+        body: jsonBody(input),
+      }),
+    setCompleted: (projectId: number, todoId: number, completed: boolean) =>
+      request<Todo>(`/api/projects/${projectId}/todos/${todoId}/completion`, {
+        method: 'PATCH',
+        body: jsonBody({ completed }),
+      }),
+    remove: (projectId: number, todoId: number) =>
+      request<void>(`/api/projects/${projectId}/todos/${todoId}`, {
         method: 'DELETE',
       }),
   },

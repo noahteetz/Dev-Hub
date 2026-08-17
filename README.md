@@ -26,8 +26,17 @@ The backend exposes CRUD endpoints for projects and their stored information:
 - `/api/projects`
 - `/api/projects/{projectId}/notes`
 - `/api/projects/{projectId}/code-snippets`
+- `/api/projects/{projectId}/ideas`
+- `/api/projects/{projectId}/todos`
+- `/api/tags`
 
-Each resource supports `POST`, `GET`, `PUT`, and `DELETE` where applicable. Code snippets also accept the shorter `/snippets` path. Deleting a project removes its notes and code snippets.
+Projects can store a repository URL, deployment URL, and any number of named external links. Ideas and todos support globally reusable tags. Convert an idea into a todo with `POST /api/projects/{projectId}/ideas/{ideaId}/convert`; the idea stays visible as converted history. Mark a todo open or completed with `PATCH /api/projects/{projectId}/todos/{todoId}/completion` and a JSON body such as `{ "completed": true }`.
+
+Each resource supports `POST`, `GET`, `PUT`, and `DELETE` where applicable. Code snippets also accept the shorter `/snippets` path. Deleting a project removes all of its notes, snippets, ideas, todos, and links.
+
+## Organizing work
+
+Use the Ideas tab to collect possibilities without turning them into commitments. Add tags such as `backend`, `release`, or `research` while creating or editing ideas and todos; the same tag is suggested across projects and can be used to filter either tab. When an idea becomes actionable, convert it to create an open todo with the idea's title, details, and tags. Completed todos stay visible and can be reopened.
 
 ## Build
 

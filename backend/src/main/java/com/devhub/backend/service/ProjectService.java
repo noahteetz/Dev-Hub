@@ -1,12 +1,16 @@
 package com.devhub.backend.service;
 
 import com.devhub.backend.dto.ProjectRequest;
+import com.devhub.backend.dto.ProjectLinkRequest;
 import com.devhub.backend.exception.InvalidRequestException;
 import com.devhub.backend.exception.ResourceNotFoundException;
 import com.devhub.backend.model.Project;
+import com.devhub.backend.model.ProjectLink;
 import com.devhub.backend.repository.ProjectRepository;
 import jakarta.annotation.PostConstruct;
+import java.util.ArrayList;
 import java.util.List;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,11 +22,16 @@ public class ProjectService {
 		this.projectRepository = projectRepository;
 	}
 
+	@Transactional
 	public Project create(ProjectRequest request) {
 		ProjectRequest body = RequestValidation.requireRequest(request);
 		return projectRepository.create(
 				RequestValidation.required(body.name(), "Project name"),
-				RequestValidation.optional(body.description())
+				RequestValidation.optional(body.description()),
+				false,
+				RequestValidation.optionalUrl(body.repositoryUrl(), "Repository URL"),
+				RequestValidation.optionalUrl(body.deploymentUrl(), "Deployment URL"),
+				validateLinks(body.links())
 		);
 	}
 
@@ -51,6 +60,7 @@ public class ProjectService {
 		return getExisting(id);
 	}
 
+	@Transactional
 	public Project update(long projectId, ProjectRequest request) {
 		long id = RequestValidation.requireId(projectId, "Project");
 		ProjectRequest body = RequestValidation.requireRequest(request);
@@ -60,7 +70,10 @@ public class ProjectService {
 		if (projectRepository.update(
 				id,
 				RequestValidation.required(body.name(), "Project name"),
-				RequestValidation.optional(body.description())
+				RequestValidation.optional(body.description()),
+				RequestValidation.optionalUrl(body.repositoryUrl(), "Repository URL"),
+				RequestValidation.optionalUrl(body.deploymentUrl(), "Deployment URL"),
+				validateLinks(body.links())
 		) == 0) {
 			throw notFound(id);
 		}
@@ -84,5 +97,26 @@ public class ProjectService {
 
 	private ResourceNotFoundException notFound(long projectId) {
 		return new ResourceNotFoundException("Project " + projectId + " was not found");
+	}
+
+	private List<ProjectLink> validateLinks(List<ProjectLinkRequest> links) {
+		if (links == null || links.isEmpty()) {
+			return List.of();
+		}
+
+		List<ProjectLink> validated = new ArrayList<>();
+		for (ProjectLinkRequest link : links) {
+			if (link == null) {
+				throw new InvalidRequestException("Project links cannot contain empty entries");
+			}
+			validated.add(new ProjectLink(
+					null,
+					null,
+					RequestValidation.required(link.label(), "Project link label"),
+					RequestValidation.requiredUrl(link.url(), "Project link URL"),
+					validated.size()
+			));
+		}
+		return validated;
 	}
 }
