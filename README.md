@@ -2,6 +2,8 @@
 
 Small full-stack starter with a React/Vite frontend and a Spring Boot backend.
 
+The product vision, planned feature set, and implementation order are documented in [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md).
+
 ## Requirements
 
 - Node.js 22+
