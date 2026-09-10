@@ -1,4 +1,5 @@
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
+import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined'
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined'
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
 import CodeOutlinedIcon from '@mui/icons-material/CodeOutlined'
@@ -31,9 +32,10 @@ import {
 } from '@mui/material'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { CodeSnippet, Idea, Note, Project, Todo } from '../types'
+import type { CodeSnippet, Idea, Note, Project, RepositoryConnection, Todo } from '../types'
 import { formatDate } from '../utils/formatDate'
 import { EmptyState } from './EmptyState'
+import { RepositoryPanel } from './RepositoryPanel'
 
 export type WorkspaceTab = 'notes' | 'snippets' | 'ideas' | 'todos'
 
@@ -62,7 +64,12 @@ interface ProjectWorkspaceProps {
   onDeleteTodo: (todo: Todo) => void
   onToggleTodo: (todo: Todo) => void
   onEditProject: () => void
-  onDeleteProject: () => void
+  onArchiveProject: () => void
+  onEditContext: () => void
+  onRefreshRepository: () => void
+  repository: RepositoryConnection | null
+  repositoryLoading: boolean
+  repositoryRefreshing: boolean
   onCreateProject: () => void
 }
 
@@ -113,6 +120,41 @@ function Metric({
           </Typography>
         </Box>
       </Stack>
+    </Box>
+  )
+}
+
+function ContextPanel({ project, onEdit }: { project: Project; onEdit: () => void }) {
+  const entries = [
+    { label: 'Progress', value: project.progressSummary, wide: true },
+    { label: 'Next step', value: project.nextStep, wide: true },
+    { label: 'Blockers', value: project.blockers, wide: false },
+    { label: 'Technical decisions', value: project.technicalDecisions, wide: false },
+    { label: 'Start command', value: project.startCommand, wide: false, code: true },
+    { label: 'Build command', value: project.buildCommand, wide: false, code: true },
+  ]
+
+  return (
+    <Box component="section" sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)', mt: 2.5, p: { xs: 2, sm: 2.5 } }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between' }}>
+        <Box>
+          <Typography sx={{ fontWeight: 800 }}>Resume here</Typography>
+          <Typography color="text.secondary" variant="body2">A compact checkpoint for the next work session.</Typography>
+        </Box>
+        <Button startIcon={<EditOutlinedIcon />} variant="outlined" onClick={onEdit}>Edit context</Button>
+      </Stack>
+      <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, mt: 2.5 }}>
+        {entries.map((entry) => (
+          <Box key={entry.label} sx={{ bgcolor: 'rgba(247, 248, 252, 0.82)', borderRadius: 1, gridColumn: { md: entry.wide ? 'span 2' : 'span 1' }, p: 1.5 }}>
+            <Typography color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 0.45, textTransform: 'uppercase' }} variant="caption">
+              {entry.label}
+            </Typography>
+            <Typography sx={{ fontFamily: entry.code ? '"ui-monospace", "SFMono-Regular", Consolas, monospace' : undefined, mt: 0.5, whiteSpace: entry.wide ? 'pre-wrap' : 'normal' }} variant="body2">
+              {entry.value || 'Not captured yet'}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
     </Box>
   )
 }
@@ -439,13 +481,13 @@ function LoadingCards() {
 function WorkspaceHeader({
   project,
   onCreateProject,
-  onDeleteProject,
+  onArchiveProject,
   onEditProject,
 }: {
   project: Project | null
   onCreateProject: () => void
   onEditProject: () => void
-  onDeleteProject: () => void
+  onArchiveProject: () => void
 }) {
   return (
     <Toolbar
@@ -530,21 +572,17 @@ function WorkspaceHeader({
           >
             Edit
           </Button>
-          <Tooltip title="Delete project">
+          <Tooltip title="Archive project">
             <IconButton
-              aria-label={`Delete ${project.name}`}
-              color="error"
+              aria-label={`Archive ${project.name}`}
               sx={{
                 borderRadius: 1,
                 transition: 'background-color 160ms ease, transform 160ms ease',
-                '&:hover': {
-                  bgcolor: 'rgba(211, 47, 47, 0.08)',
-                  transform: 'scale(1.08)',
-                },
+                '&:hover': { bgcolor: 'action.hover', transform: 'scale(1.08)' },
               }}
-              onClick={onDeleteProject}
+              onClick={onArchiveProject}
             >
-              <DeleteOutlineRoundedIcon />
+              <ArchiveOutlinedIcon />
             </IconButton>
           </Tooltip>
         </Stack>
@@ -599,7 +637,12 @@ export function ProjectWorkspace({
   onDeleteTodo,
   onToggleTodo,
   onEditProject,
-  onDeleteProject,
+  onArchiveProject,
+  onEditContext,
+  onRefreshRepository,
+  repository,
+  repositoryLoading,
+  repositoryRefreshing,
   onCreateProject,
 }: ProjectWorkspaceProps) {
   const [tagFilter, setTagFilter] = useState('')
@@ -616,7 +659,7 @@ export function ProjectWorkspace({
         >
           <WorkspaceHeader
             onCreateProject={onCreateProject}
-            onDeleteProject={onDeleteProject}
+            onArchiveProject={onArchiveProject}
             onEditProject={onEditProject}
             project={project}
           />
@@ -690,7 +733,7 @@ export function ProjectWorkspace({
       >
         <WorkspaceHeader
           onCreateProject={onCreateProject}
-          onDeleteProject={onDeleteProject}
+          onArchiveProject={onArchiveProject}
           onEditProject={onEditProject}
           project={project}
         />
@@ -718,6 +761,17 @@ export function ProjectWorkspace({
             value={formatDate(project.updatedAt)}
           />
         </Box>
+
+        {!isSystemSection ? <ContextPanel onEdit={onEditContext} project={project} /> : null}
+        {!isSystemSection ? (
+          <RepositoryPanel
+            loading={repositoryLoading}
+            onRefresh={onRefreshRepository}
+            project={project}
+            refreshing={repositoryRefreshing}
+            repository={repository}
+          />
+        ) : null}
 
         <Box sx={{ mt: 3.5 }}>
           <Tabs

@@ -196,6 +196,212 @@ Ziel: Projektaktivitaet muss nicht mehr vollstaendig manuell gepflegt werden.
 
 **Fertig, wenn:** Ein verbundenes Repository seine wichtigsten Metadaten liefert und die Projektaktivitaet sichtbar beeinflusst.
 
+## Konkreter Implementierungsplan fuer Phase 1 und 2
+
+### Gemeinsame technische Entscheidungen
+
+- Das bestehende Spring-JDBC- und React/MUI-Setup bleibt bestehen.
+- Vor fachlichen Schemaaenderungen wird Flyway eingefuehrt. Das aktuelle Schema wird als Baseline `V1` erfasst; neue und bestehende Installationen muessen denselben Stand erreichen. `schema.sql` wird danach nicht mehr fuer fortlaufende Migrationen verwendet.
+- API-Erweiterungen bleiben fuer bestehende Clients kompatibel. Neue Felder erhalten Datenbank-Defaults und werden zunaechst optional angenommen.
+- Systembereiche wie "General notes" werden weder im Projekt-Dashboard noch im Archiv angezeigt und koennen weiterhin nicht bearbeitet oder archiviert werden.
+- `updatedAt` beschreibt eine Datenaenderung, nicht automatisch echte Projektaktivitaet. Fuer Sortierung und Inaktivitaet wird ein eigenes `effectiveActivityAt` verwendet.
+- Ein Projekt gilt standardmaessig nach 30 Tagen ohne Aktivitaet als lange ungenutzt. Der Wert wird ueber `DEVHUB_STALE_PROJECT_DAYS` konfigurierbar.
+
+### Phase 1: Orientierung und Wiedereinstieg
+
+#### P1.1 - Migrationen und Projektmodell vorbereiten (1-2 Tage)
+
+**Datenmodell**
+
+- `status`: `PLANNED`, `ACTIVE`, `PAUSED` oder `ARCHIVED`, Standard `PLANNED`
+- `priority`: Ganzzahl von `0` bis `3`, Standard `0`
+- `favorite`: Boolean, Standard `false`
+- `status_before_archive`: letzter nicht archivierter Status fuer die Wiederherstellung
+- `archived_at` und `archive_reason`: Zeitpunkt und optionale Begruendung
+- `progress_summary`: letzter Arbeitsstand
+- `next_step`: genau ein kurzer, konkreter naechster Schritt
+- `blockers`: aktuelle Blocker als Freitext
+- `start_command` und `build_command`: lokale Kommandos
+- `technical_decisions`: knappe, wichtige Entscheidungen als Freitext
+- `context_updated_at`: Zeitpunkt der letzten bewussten Aktualisierung des Arbeitskontexts
+
+`effectiveActivityAt` wird in Phase 1 aus `context_updated_at` und `created_at` berechnet. Reine Aenderungen an Name, Links oder Beschreibung beeinflussen diesen Wert nicht.
+
+**Ergebnis und Tests**
+
+- Flyway-Migrationen laufen auf einer leeren PostgreSQL- und H2-Testdatenbank.
+- Bestehende Projekte werden ohne Datenverlust mit Defaults uebernommen.
+- Datenbank-Constraints verhindern ungueltige Status- und Prioritaetswerte.
+
+#### P1.2 - Backend-API fuer Organisation und Arbeitskontext (2 Tage)
+
+Das bestehende Projektobjekt wird um die neuen Felder sowie `effectiveActivityAt` und `stale` erweitert. Die vorhandenen Create-/Update-Aufrufe bleiben nutzbar.
+
+**Neue Aktionen**
+
+- `PATCH /api/projects/{id}/organization` mit `status`, `priority` und `favorite`
+- `PUT /api/projects/{id}/context` fuer Arbeitsstand, naechsten Schritt, Blocker, Kommandos und Entscheidungen
+- `POST /api/projects/{id}/archive` mit optionalem `reason`
+- `POST /api/projects/{id}/restore`, setzt den vorherigen Status oder ersatzweise `PAUSED`
+- `GET /api/projects?archived=false` als Standardliste
+- `GET /api/projects?archived=true` fuer die Archivansicht
+
+Archivieren ersetzt das bisherige Loeschen im normalen UI. Der bestehende `DELETE`-Endpunkt bleibt vorerst fuer Kompatibilitaet erhalten, wird aber nicht mehr prominent angeboten.
+
+**Backend-Regeln**
+
+- Archivierte Projekte behalten Notizen, Ideen, Todos, Snippets und Links unveraendert.
+- Nur eine Aenderung des Arbeitskontexts aktualisiert `context_updated_at`.
+- Archivieren und Wiederherstellen sind idempotent oder liefern einen eindeutigen `409`-Fehler.
+- Validierungsfehler liefern weiterhin das vorhandene strukturierte Fehlerformat.
+
+**Tests**
+
+- Integrationstest fuer Erstellen, Organisieren, Kontext aktualisieren, Archivieren und Wiederherstellen
+- Regressionstest, dass alle bestehenden Inhaltstypen nach Archivierung und Wiederherstellung vorhanden sind
+- Tests fuer Systembereiche, ungueltige Statuswerte und unbekannte Projekt-IDs
+
+#### P1.3 - Dashboard als neue Startansicht (3 Tage)
+
+Nach dem Laden oeffnet Dev Hub das Dashboard statt automatisch das erste Projekt. Die bestehende Seitenleiste bleibt fuer direkte Navigation erhalten.
+
+**Dashboard-Bereiche**
+
+- `Favoriten`: nicht archivierte favorisierte Projekte
+- `Jetzt relevant`: aktive Projekte, sortiert nach Prioritaet und Aktivitaet
+- `Geplant oder pausiert`: getrennt von aktiver Arbeit
+- `Lange ungenutzt`: Projekte mit `stale = true`
+
+Jeder Projekteindruck zeigt Name, Status, Prioritaet, letzte Aktivitaet, letzten Stand, naechsten Schritt und Blocker. Ein Klick oeffnet den bestehenden Projektarbeitsbereich.
+
+**Steuerung**
+
+- Filter: Status, Prioritaet, nur Favoriten, nur lange ungenutzte Projekte
+- Sortierung: Prioritaet, letzte Aktivitaet, Name
+- Leerer Zustand pro Bereich sowie globaler Lade- und Fehlerzustand
+- Filter und Sortierung werden in `localStorage` gespeichert
+
+Die Filterung erfolgt in Phase 1 im Frontend, da die persoenliche Projektmenge klein ist. Die API liefert dennoch bereits archivierte und nicht archivierte Projekte getrennt.
+
+#### P1.4 - Arbeitskontext im Projektbereich (2 Tage)
+
+- Oberhalb der bestehenden Tabs erscheint ein kompakter Wiedereinstiegsbereich.
+- `Naechster Schritt` und `Blocker` sind ohne Wechsel in den allgemeinen Projektdialog bearbeitbar.
+- Ein erweiterter Dialog pflegt letzten Stand, Start-/Build-Kommando und technische Entscheidungen.
+- Nach dem Speichern wird der Dashboard-Eintrag im lokalen Zustand aktualisiert.
+- Fehlgeschlagene Speicherungen behalten die Eingaben und zeigen den vorhandenen Fehlerhinweis.
+
+#### P1.5 - Archivansicht und Abschluss (1-2 Tage)
+
+- Eigene Ansicht fuer archivierte Projekte mit Archivdatum und Begruendung
+- Wiederherstellen als primaere Aktion, dauerhaftes Loeschen nur hinter einer zweiten, deutlichen Bestaetigung
+- Responsive Pruefung fuer Dashboard, Filter und Arbeitskontext
+- Frontend-Tests mit Vitest und React Testing Library fuer Gruppierung, Filterung und Wiederherstellung
+- Backend-Gesamttest und Frontend-Build als Release-Gate
+
+**Abnahme Phase 1**
+
+1. Ein bestehendes Projekt kann ohne Datenverlust priorisiert, pausiert, archiviert und wiederhergestellt werden.
+2. Ein Nutzer findet auf dem Dashboard in hoechstens drei Interaktionen ein aktives oder lange ungenutztes Projekt.
+3. Letzter Stand, naechster Schritt und Blocker sind ohne Oeffnen eines Todo-Workflows sichtbar.
+4. Die Sortierung nach Aktivitaet reagiert nur auf bewusste Kontextaktualisierungen.
+5. Alle Backend-Tests, Frontend-Tests, Lint und Produktions-Build laufen erfolgreich.
+
+### Phase 2: Repository-Metadaten
+
+#### P2.1 - Repository-Verbindung und URL-Erkennung (2 Tage)
+
+Die vorhandene `repositoryUrl` bleibt die vom Nutzer eingegebene Quelle. Ein Parser normalisiert HTTPS- und SSH-Adressen, entfernt ein abschliessendes `.git` und erkennt anhand des Hosts:
+
+- `GITHUB` fuer `github.com`
+- `GITLAB` fuer `gitlab.com`
+- `GENERIC` fuer andere gueltige Git-URLs
+
+Allgemeine Git-URLs werden validiert und verlinkt, aber in Phase 2 nicht von Dev Hub abgerufen. Damit werden unkontrollierte Serverzugriffe auf beliebige Hosts und SSRF-Risiken vermieden. Self-hosted GitHub-/GitLab-Instanzen und Zugangsdaten bleiben ausserhalb dieses Umfangs.
+
+**Tests**
+
+- HTTPS-, SSH-, `.git`-, Untergruppen- und ungueltige URL-Varianten
+- Exakte Hostpruefung, damit aehnliche oder manipulierte Domains nicht als Provider gelten
+- Aktualisierung und Entfernen einer bestehenden Repository-URL
+
+#### P2.2 - Cache-Modell und Provider-Adapter (3 Tage)
+
+Eine Tabelle `repository_metadata` speichert pro Projekt hoechstens einen Cache-Eintrag:
+
+- Provider, Owner/Namespace, Repository-Name und kanonische Web-URL
+- Standard-Branch
+- letzter Commit mit SHA, Nachricht, Autor und Zeitpunkt
+- README-Inhalt und erkannter Dateiname
+- Sprachen mit prozentualem Anteil als JSON-Text
+- `sync_status`: `NEVER_SYNCED`, `SYNCING`, `READY`, `PRIVATE_OR_NOT_FOUND`, `RATE_LIMITED`, `FAILED` oder `UNSUPPORTED`
+- `last_attempt_at`, `last_successful_sync_at`, Fehlercode und nutzerlesbare Fehlermeldung
+
+Ein gemeinsames `RepositoryMetadataProvider`-Interface wird durch GitHub- und GitLab-Adapter implementiert. Spring `RestClient` erhaelt feste Verbindungs- und Lese-Timeouts sowie einen eindeutigen User-Agent.
+
+**Abrufumfang**
+
+- GitHub: Repository, letzter Commit des Standard-Branches, Sprachen und README ueber die REST-API
+- GitLab: Projekt, letzter Commit, Sprachen und README ueber die REST-API
+- Kein Token und kein Schreibzugriff in Phase 2
+
+Ein fehlgeschlagener Abruf behaelt den letzten erfolgreichen Cache. Nur Status und Fehlerdetails werden aktualisiert.
+
+#### P2.3 - Synchronisierungsservice und API (2 Tage)
+
+**Endpunkte**
+
+- `GET /api/projects/{id}/repository` liefert Verbindung, Cache, Status und Provider-Links
+- `POST /api/projects/{id}/repository/refresh` fuehrt den Abruf synchron aus und liefert den aktualisierten Stand
+
+Der synchrone Abruf ist fuer den ersten Meilenstein ausreichend und vereinfacht Fehlerbehandlung und Betrieb. Timeouts begrenzen die Wartezeit. Regelmaessige Hintergrundaktualisierung folgt erst nach beobachtetem Bedarf.
+
+**Fehlerabbildung**
+
+- `400`: ungueltige Repository-URL
+- `PRIVATE_OR_NOT_FOUND`: Provider antwortet mit `401`, `403` oder `404`; die UI erklaert, dass private Repositories noch nicht unterstuetzt werden
+- `RATE_LIMITED`: Rate Limit mit moeglichem Retry-Zeitpunkt
+- `FAILED`: Timeout, Netzwerk- oder unerwarteter Providerfehler
+- `UNSUPPORTED`: gueltige allgemeine Git-URL ohne Metadatenadapter
+
+Provider-Antworten werden in Tests mit WireMock simuliert; Tests greifen nie auf echte GitHub- oder GitLab-Endpunkte zu.
+
+#### P2.4 - Repository-Bereich im Frontend (2-3 Tage)
+
+- Neuer Bereich im Projektkopf fuer Provider, Standard-Branch, letzte Synchronisierung und letzten Commit
+- Manuelle Aktualisierung mit eindeutigem Ladezustand; parallele Aktualisierungen werden verhindert
+- Sprachen als kompakte Anteile und README als schreibgeschuetzte Vorschau
+- Provider-spezifische Links zu Repository, Branches, Issues und Pull/Merge Requests
+- Klare Leer-, Fehler-, Rate-Limit-, Privat- und Nicht-unterstuetzt-Zustaende
+- Beim Aendern der Repository-URL wird alter Cache als veraltet markiert und erst nach erfolgreicher Aktualisierung ersetzt
+
+#### P2.5 - Aktivitaet ins Dashboard integrieren (1-2 Tage)
+
+`effectiveActivityAt` wird nun als Maximum aus `context_updated_at`, letztem Repository-Commit und `created_at` berechnet. Das Dashboard zeigt die Quelle als `Git-Aktivitaet` oder `Kontext aktualisiert` an.
+
+- Nach manueller Repository-Aktualisierung wird das betroffene Projekt im Dashboardzustand aktualisiert.
+- Sortierung und `stale` werden serverseitig konsistent berechnet.
+- Ein alter oder fehlgeschlagener Cache bleibt sichtbar und wird als solcher gekennzeichnet.
+- Commits auf Nicht-Standard-Branches und lokale, noch nicht gepushte Commits sind in Phase 2 bewusst nicht erfassbar.
+
+**Abnahme Phase 2**
+
+1. Eine oeffentliche GitHub- und eine oeffentliche GitLab-URL liefern Standard-Branch, letzten Commit, Sprachen und README aus simulierten Provider-Antworten.
+2. Der letzte Commit beeinflusst Dashboard-Sortierung und Inaktivitaetsstatus nachvollziehbar.
+3. Ein Providerfehler vernichtet keine zuvor erfolgreich geladenen Metadaten.
+4. Private und allgemeine Repositories zeigen einen konkreten Zustand statt eines generischen Fehlers.
+5. Es werden keine Tokens gespeichert und keine beliebigen Hosts serverseitig abgerufen.
+6. Alle Backend-Tests, Frontend-Tests, Lint und Produktions-Build laufen erfolgreich.
+
+### Empfohlene Reihenfolge und Meilensteine
+
+1. `M1 Datenbasis`: P1.1 und P1.2
+2. `M2 Nutzbarer Wiedereinstieg`: P1.3 bis P1.5; Phase 1 im Alltag testen
+3. `M3 Repository-Grundlage`: P2.1 bis P2.3
+4. `M4 Integrierte Aktivitaet`: P2.4 und P2.5; erster empfohlener Produktmeilenstein abgeschlossen
+
+Bei einer einzelnen entwickelnden Person sind fuer Phase 1 etwa 9-11 und fuer Phase 2 etwa 10-12 konzentrierte Entwicklungstage realistisch. Provider-Rate-Limits, H2-/PostgreSQL-Unterschiede und das Einfuehren der ersten Frontend-Testinfrastruktur sind die groessten Unsicherheiten.
+
 ### Phase 3: Globaler Eingang und Wissensbereich
 
 Ziel: Auch noch nicht zugeordnete Gedanken haben einen festen Ort.

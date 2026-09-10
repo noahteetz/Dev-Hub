@@ -1,13 +1,89 @@
+export type ProjectStatus = 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED'
+
 export interface Project {
   id: number
   name: string
   description: string
   system: boolean
+  status: ProjectStatus
+  priority: number
+  favorite: boolean
+  statusBeforeArchive: ProjectStatus | null
   repositoryUrl: string
   deploymentUrl: string
+  progressSummary: string
+  nextStep: string
+  blockers: string
+  startCommand: string
+  buildCommand: string
+  technicalDecisions: string
+  contextUpdatedAt: string | null
+  archivedAt: string | null
+  archiveReason: string
   links: ProjectLink[]
   createdAt: string
   updatedAt: string
+  effectiveActivityAt: string
+  stale: boolean
+}
+
+export interface ProjectOrganizationInput {
+  status?: ProjectStatus
+  priority?: number
+  favorite?: boolean
+}
+
+export interface ProjectContextInput {
+  progressSummary: string
+  nextStep: string
+  blockers: string
+  startCommand: string
+  buildCommand: string
+  technicalDecisions: string
+}
+
+export type RepositoryProvider = 'GITHUB' | 'GITLAB' | 'GENERIC'
+export type RepositorySyncStatus =
+  | 'NEVER_SYNCED'
+  | 'SYNCING'
+  | 'READY'
+  | 'PRIVATE_OR_NOT_FOUND'
+  | 'RATE_LIMITED'
+  | 'FAILED'
+  | 'UNSUPPORTED'
+
+export interface RepositoryMetadata {
+  projectId: number
+  provider: RepositoryProvider
+  owner: string
+  repositoryName: string
+  canonicalUrl: string
+  defaultBranch: string
+  lastCommitSha: string
+  lastCommitMessage: string
+  lastCommitAuthor: string
+  lastCommitAt: string | null
+  readmeFileName: string
+  readmeContent: string
+  languages: Record<string, number>
+  syncStatus: RepositorySyncStatus
+  lastAttemptAt: string | null
+  lastSuccessfulSyncAt: string | null
+  errorCode: string
+  errorMessage: string
+  branchesUrl: string
+  issuesUrl: string
+  pullRequestsUrl: string
+}
+
+export interface RepositoryConnection {
+  projectId: number
+  inputUrl: string
+  provider: RepositoryProvider | null
+  owner: string
+  repositoryName: string
+  canonicalUrl: string
+  metadata: RepositoryMetadata | null
 }
 
 export interface ProjectLink {

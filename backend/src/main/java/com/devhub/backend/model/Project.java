@@ -8,10 +8,25 @@ public record Project(
 		String name,
 		String description,
 		boolean system,
+		ProjectStatus status,
+		int priority,
+		boolean favorite,
+		ProjectStatus statusBeforeArchive,
 		String repositoryUrl,
 		String deploymentUrl,
+		String progressSummary,
+		String nextStep,
+		String blockers,
+		String startCommand,
+		String buildCommand,
+		String technicalDecisions,
+		Instant contextUpdatedAt,
+		Instant archivedAt,
+		String archiveReason,
 		List<ProjectLink> links,
 		Instant createdAt,
-		Instant updatedAt
+		Instant updatedAt,
+		Instant effectiveActivityAt,
+		boolean stale
 ) {
 }

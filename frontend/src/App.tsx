@@ -5,6 +5,8 @@ import { api } from './api'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { IdeaDialog } from './components/IdeaDialog'
 import { NoteDialog } from './components/NoteDialog'
+import { ProjectContextDialog } from './components/ProjectContextDialog'
+import { ProjectDashboard, type DashboardView } from './components/ProjectDashboard'
 import { ProjectDialog } from './components/ProjectDialog'
 import { ProjectSidebar, type ApiState } from './components/ProjectSidebar'
 import { ProjectWorkspace, type WorkspaceTab } from './components/ProjectWorkspace'
@@ -18,7 +20,10 @@ import type {
   Note,
   NoteInput,
   Project,
+  ProjectContextInput,
   ProjectInput,
+  ProjectOrganizationInput,
+  RepositoryConnection,
   Todo,
   TodoInput,
 } from './types'
@@ -43,6 +48,10 @@ type TodoDialogState = {
   todo: Todo | null
 } | null
 
+type ContextDialogState = {
+  project: Project
+} | null
+
 type PendingDelete =
   | { type: 'project'; project: Project }
   | { type: 'note'; projectId: number; note: Note }
@@ -56,7 +65,19 @@ type Notice = {
   severity: 'error' | 'success'
 } | null
 
-type SavingAction = 'project' | 'note' | 'snippet' | 'idea' | 'todo' | 'conversion' | 'delete' | null
+type SavingAction =
+  | 'project'
+  | 'note'
+  | 'snippet'
+  | 'idea'
+  | 'todo'
+  | 'conversion'
+  | 'delete'
+  | 'context'
+  | 'organization'
+  | 'repository'
+  | 'archive'
+  | null
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
@@ -68,7 +89,9 @@ function replaceItem<T extends { id: number }>(items: T[], updated: T) {
 
 function App() {
   const [projects, setProjects] = useState<Project[]>([])
+  const [archivedProjects, setArchivedProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [dashboardView, setDashboardView] = useState<DashboardView>('active')
   const [notes, setNotes] = useState<Note[]>([])
   const [snippets, setSnippets] = useState<CodeSnippet[]>([])
   const [ideas, setIdeas] = useState<Idea[]>([])
@@ -83,6 +106,9 @@ function App() {
   const [snippetDialog, setSnippetDialog] = useState<SnippetDialogState>(null)
   const [ideaDialog, setIdeaDialog] = useState<IdeaDialogState>(null)
   const [todoDialog, setTodoDialog] = useState<TodoDialogState>(null)
+  const [contextDialog, setContextDialog] = useState<ContextDialogState>(null)
+  const [repository, setRepository] = useState<RepositoryConnection | null>(null)
+  const [repositoryLoading, setRepositoryLoading] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null)
   const [notice, setNotice] = useState<Notice>(null)
 
@@ -92,7 +118,7 @@ function App() {
       if (currentId && loadedProjects.some((project) => project.id === currentId)) {
         return currentId
       }
-      return loadedProjects[0]?.id ?? null
+      return null
     })
   }, [])
 
@@ -100,8 +126,12 @@ function App() {
     setApiState('loading')
 
     try {
-      const loadedProjects = await api.projects.list()
+      const [loadedProjects, loadedArchivedProjects] = await Promise.all([
+        api.projects.list(false),
+        api.projects.list(true),
+      ])
       applyProjects(loadedProjects)
+      setArchivedProjects(loadedArchivedProjects)
       setApiState('ready')
     } catch (error) {
       setApiState('error')
@@ -112,14 +142,14 @@ function App() {
   useEffect(() => {
     let active = true
 
-    api.projects
-      .list()
-      .then((loadedProjects) => {
+    Promise.all([api.projects.list(false), api.projects.list(true)])
+      .then(([loadedProjects, loadedArchivedProjects]) => {
         if (!active) {
           return
         }
         applyProjects(loadedProjects)
-        setContentLoading(loadedProjects.length > 0)
+        setArchivedProjects(loadedArchivedProjects)
+        setContentLoading(false)
         setApiState('ready')
       })
       .catch((error: unknown) => {
@@ -154,12 +184,17 @@ function App() {
     }
   }, [])
 
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ?? null
+
   useEffect(() => {
     if (!selectedProjectId) {
       return
     }
 
     let active = true
+    const project = projects.find((candidate) => candidate.id === selectedProjectId)
+    const shouldLoadRepository = Boolean(project && !project.system && project.repositoryUrl)
 
     Promise.all([
       api.notes.list(selectedProjectId),
@@ -187,13 +222,29 @@ function App() {
         }
       })
 
+    if (shouldLoadRepository) {
+      api.repository.get(selectedProjectId)
+        .then((loadedRepository) => {
+          if (active) {
+            setRepository(loadedRepository)
+          }
+        })
+        .catch((error: unknown) => {
+          if (active) {
+            setNotice({ message: errorMessage(error), severity: 'error' })
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setRepositoryLoading(false)
+          }
+        })
+    }
+
     return () => {
       active = false
     }
-  }, [selectedProjectId])
-
-  const selectedProject =
-    projects.find((project) => project.id === selectedProjectId) ?? null
+  }, [projects, selectedProjectId])
 
   async function saveProject(input: ProjectInput) {
     setSavingAction('project')
@@ -202,16 +253,93 @@ function App() {
       if (projectDialog?.project) {
         const updated = await api.projects.update(projectDialog.project.id, input)
         setProjects((current) => replaceItem(current, updated))
+        if (selectedProjectId === updated.id) {
+          setRepository(null)
+          setRepositoryLoading(Boolean(!updated.system && updated.repositoryUrl))
+        }
         setNotice({ message: 'Project updated.', severity: 'success' })
       } else {
         const created = await api.projects.create(input)
         setProjects((current) => [created, ...current])
         setContentLoading(true)
+        setRepository(null)
+        setRepositoryLoading(Boolean(!created.system && created.repositoryUrl))
         setSelectedProjectId(created.id)
+        setDashboardView('active')
         setActiveTab('notes')
         setNotice({ message: 'Project created.', severity: 'success' })
       }
       setProjectDialog(null)
+    } catch (error) {
+      setNotice({ message: errorMessage(error), severity: 'error' })
+    } finally {
+      setSavingAction(null)
+    }
+  }
+
+  async function saveContext(input: ProjectContextInput) {
+    if (!selectedProjectId) {
+      return
+    }
+
+    setSavingAction('context')
+
+    try {
+      const updated = await api.projects.updateContext(selectedProjectId, input)
+      setProjects((current) => replaceItem(current, updated))
+      setContextDialog(null)
+      setNotice({ message: 'Resume context updated.', severity: 'success' })
+    } catch (error) {
+      setNotice({ message: errorMessage(error), severity: 'error' })
+    } finally {
+      setSavingAction(null)
+    }
+  }
+
+  async function updateOrganization(projectId: number, input: ProjectOrganizationInput) {
+    setSavingAction('organization')
+
+    try {
+      const updated = await api.projects.updateOrganization(projectId, input)
+      setProjects((current) => replaceItem(current, updated))
+      setNotice({ message: 'Project organization updated.', severity: 'success' })
+    } catch (error) {
+      setNotice({ message: errorMessage(error), severity: 'error' })
+    } finally {
+      setSavingAction(null)
+    }
+  }
+
+  async function refreshRepository() {
+    if (!selectedProjectId) {
+      return
+    }
+
+    setSavingAction('repository')
+
+    try {
+      const updated = await api.repository.refresh(selectedProjectId)
+      setRepository(updated)
+      const message = updated.metadata?.syncStatus === 'READY'
+        ? 'Repository metadata refreshed.'
+        : updated.metadata?.errorMessage || 'Repository metadata could not be refreshed.'
+      setNotice({ message, severity: updated.metadata?.syncStatus === 'READY' ? 'success' : 'error' })
+    } catch (error) {
+      setNotice({ message: errorMessage(error), severity: 'error' })
+    } finally {
+      setSavingAction(null)
+    }
+  }
+
+  async function restoreProject(project: Project) {
+    setSavingAction('archive')
+
+    try {
+      const restored = await api.projects.restore(project.id)
+      setArchivedProjects((current) => current.filter((candidate) => candidate.id !== project.id))
+      setProjects((current) => [restored, ...current])
+      setDashboardView('active')
+      setNotice({ message: 'Project restored.', severity: 'success' })
     } catch (error) {
       setNotice({ message: errorMessage(error), severity: 'error' })
     } finally {
@@ -383,21 +511,24 @@ function App() {
 
     try {
       if (pendingDelete.type === 'project') {
-        const deletedProjectId = pendingDelete.project.id
-        await api.projects.remove(deletedProjectId)
-        const remainingProjects = projects.filter((project) => project.id !== deletedProjectId)
+        const archivedProjectId = pendingDelete.project.id
+        const archived = await api.projects.archive(archivedProjectId)
+        const remainingProjects = projects.filter((project) => project.id !== archivedProjectId)
         setProjects(remainingProjects)
-        if (selectedProjectId === deletedProjectId) {
+        setArchivedProjects((current) => [archived, ...current.filter((project) => project.id !== archivedProjectId)])
+        if (selectedProjectId === archivedProjectId) {
           setNotes([])
           setSnippets([])
           setIdeas([])
           setTodos([])
-          setContentLoading(remainingProjects.length > 0)
+          setRepository(null)
+          setContentLoading(false)
         }
         setSelectedProjectId((currentId) =>
-          currentId === deletedProjectId ? remainingProjects[0]?.id ?? null : currentId,
+          currentId === archivedProjectId ? null : currentId,
         )
-        setNotice({ message: 'Project deleted.', severity: 'success' })
+        setDashboardView('active')
+        setNotice({ message: 'Project archived.', severity: 'success' })
       } else if (pendingDelete.type === 'note') {
         await api.notes.remove(pendingDelete.projectId, pendingDelete.note.id)
         setNotes((current) => current.filter((note) => note.id !== pendingDelete.note.id))
@@ -427,7 +558,7 @@ function App() {
 
   const confirmTitle =
     pendingDelete?.type === 'project'
-      ? 'Delete project?'
+      ? 'Archive project?'
       : pendingDelete?.type === 'note'
         ? 'Delete note?'
         : pendingDelete?.type === 'snippet'
@@ -437,11 +568,11 @@ function App() {
             : 'Delete todo?'
   const confirmMessage =
     pendingDelete?.type === 'project'
-      ? 'This will also remove every note and code snippet inside the project.'
+      ? 'The project and its content will stay available in the archive and can be restored later.'
       : 'This information will be permanently removed.'
   const confirmLabel =
     pendingDelete?.type === 'project'
-      ? 'Delete project'
+      ? 'Archive project'
       : pendingDelete?.type === 'note'
         ? 'Delete note'
         : pendingDelete?.type === 'snippet'
@@ -454,68 +585,105 @@ function App() {
     <Box className="app-shell">
       <ProjectSidebar
         apiState={apiState}
+        archivedProjectCount={archivedProjects.length}
+        dashboardView={dashboardView}
         onCreateProject={() => setProjectDialog({ project: null })}
-        onDeleteProject={(project) => setPendingDelete({ type: 'project', project })}
+        onArchiveProject={(project) => setPendingDelete({ type: 'project', project })}
         onEditProject={(project) => setProjectDialog({ project })}
         onRetry={() => void loadProjects()}
+        onShowDashboard={(view) => {
+          setSelectedProjectId(null)
+          setRepository(null)
+          setRepositoryLoading(false)
+          setDashboardView(view)
+        }}
         onSelectProject={(projectId) => {
           if (projectId !== selectedProjectId) {
             setContentLoading(true)
           }
+          const project = projects.find((candidate) => candidate.id === projectId)
+          setRepository(null)
+          setRepositoryLoading(Boolean(project && !project.system && project.repositoryUrl))
+          setDashboardView('active')
           setSelectedProjectId(projectId)
           setActiveTab('notes')
         }}
         projects={projects}
         selectedProjectId={selectedProjectId}
       />
-      <ProjectWorkspace
-        activeTab={activeTab}
-        ideas={ideas}
-        loading={contentLoading}
-        notes={notes}
-        onCreateNote={() => setNoteDialog({ note: null })}
-        onCreateProject={() => setProjectDialog({ project: null })}
-        onCreateSnippet={() => setSnippetDialog({ snippet: null })}
-        onCreateIdea={() => setIdeaDialog({ idea: null })}
-        onCreateTodo={() => setTodoDialog({ todo: null })}
-        onDeleteNote={(note) =>
-          selectedProjectId
-            ? setPendingDelete({ type: 'note', note, projectId: selectedProjectId })
-            : undefined
-        }
-        onDeleteProject={() =>
-          selectedProject ? setPendingDelete({ type: 'project', project: selectedProject }) : undefined
-        }
-        onDeleteSnippet={(snippet) =>
-          selectedProjectId
-            ? setPendingDelete({ type: 'snippet', snippet, projectId: selectedProjectId })
-            : undefined
-        }
-        onDeleteIdea={(idea) =>
-          selectedProjectId
-            ? setPendingDelete({ type: 'idea', idea, projectId: selectedProjectId })
-            : undefined
-        }
-        onDeleteTodo={(todo) =>
-          selectedProjectId
-            ? setPendingDelete({ type: 'todo', todo, projectId: selectedProjectId })
-            : undefined
-        }
-        onEditNote={(note) => setNoteDialog({ note })}
-        onEditProject={() =>
-          selectedProject ? setProjectDialog({ project: selectedProject }) : undefined
-        }
-        onEditSnippet={(snippet) => setSnippetDialog({ snippet })}
-        onEditIdea={(idea) => setIdeaDialog({ idea })}
-        onEditTodo={(todo) => setTodoDialog({ todo })}
-        onConvertIdea={(idea) => void convertIdea(idea)}
-        onToggleTodo={(todo) => void toggleTodo(todo)}
-        onTabChange={setActiveTab}
-        project={selectedProject}
-        snippets={snippets}
-        tagOptions={tagOptions}
-        todos={todos}
-      />
+      {selectedProject ? (
+        <ProjectWorkspace
+          activeTab={activeTab}
+          ideas={ideas}
+          loading={contentLoading}
+          notes={notes}
+          onArchiveProject={() =>
+            setPendingDelete({ type: 'project', project: selectedProject })
+          }
+          onCreateNote={() => setNoteDialog({ note: null })}
+          onCreateProject={() => setProjectDialog({ project: null })}
+          onCreateSnippet={() => setSnippetDialog({ snippet: null })}
+          onCreateIdea={() => setIdeaDialog({ idea: null })}
+          onCreateTodo={() => setTodoDialog({ todo: null })}
+          onDeleteNote={(note) =>
+            selectedProjectId
+              ? setPendingDelete({ type: 'note', note, projectId: selectedProjectId })
+              : undefined
+          }
+          onDeleteSnippet={(snippet) =>
+            selectedProjectId
+              ? setPendingDelete({ type: 'snippet', snippet, projectId: selectedProjectId })
+              : undefined
+          }
+          onDeleteIdea={(idea) =>
+            selectedProjectId
+              ? setPendingDelete({ type: 'idea', idea, projectId: selectedProjectId })
+              : undefined
+          }
+          onDeleteTodo={(todo) =>
+            selectedProjectId
+              ? setPendingDelete({ type: 'todo', todo, projectId: selectedProjectId })
+              : undefined
+          }
+          onEditContext={() => setContextDialog({ project: selectedProject })}
+          onEditNote={(note) => setNoteDialog({ note })}
+          onEditProject={() => setProjectDialog({ project: selectedProject })}
+          onEditSnippet={(snippet) => setSnippetDialog({ snippet })}
+          onEditIdea={(idea) => setIdeaDialog({ idea })}
+          onEditTodo={(todo) => setTodoDialog({ todo })}
+          onConvertIdea={(idea) => void convertIdea(idea)}
+          onRefreshRepository={() => void refreshRepository()}
+          onToggleTodo={(todo) => void toggleTodo(todo)}
+          onTabChange={setActiveTab}
+          project={selectedProject}
+          repository={repository}
+          repositoryLoading={repositoryLoading}
+          repositoryRefreshing={savingAction === 'repository'}
+          snippets={snippets}
+          tagOptions={tagOptions}
+          todos={todos}
+        />
+      ) : (
+        <ProjectDashboard
+          activeProjects={projects}
+          archivedProjects={archivedProjects}
+          onArchiveProject={(project) => setPendingDelete({ type: 'project', project })}
+          onCreateProject={() => setProjectDialog({ project: null })}
+          onRestoreProject={(project) => void restoreProject(project)}
+          onSelectProject={(projectId) => {
+            const project = projects.find((candidate) => candidate.id === projectId)
+            setRepository(null)
+            setRepositoryLoading(Boolean(project && !project.system && project.repositoryUrl))
+            setDashboardView('active')
+            setSelectedProjectId(projectId)
+            setActiveTab('notes')
+            setContentLoading(true)
+          }}
+          onUpdateOrganization={(projectId, input) => void updateOrganization(projectId, input)}
+          onViewChange={(view) => setDashboardView(view)}
+          view={dashboardView}
+        />
+      )}
 
       {projectDialog ? (
         <ProjectDialog
@@ -524,6 +692,15 @@ function App() {
           onSubmit={saveProject}
           project={projectDialog.project}
           saving={savingAction === 'project'}
+        />
+      ) : null}
+      {contextDialog ? (
+        <ProjectContextDialog
+          open
+          onClose={() => setContextDialog(null)}
+          onSubmit={saveContext}
+          project={contextDialog.project}
+          saving={savingAction === 'context'}
         />
       ) : null}
       {noteDialog ? (

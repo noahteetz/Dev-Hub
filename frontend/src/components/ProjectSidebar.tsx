@@ -1,5 +1,6 @@
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
-import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined'
+import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
@@ -31,7 +32,10 @@ interface ProjectSidebarProps {
   onSelectProject: (projectId: number) => void
   onCreateProject: () => void
   onEditProject: (project: Project) => void
-  onDeleteProject: (project: Project) => void
+  onArchiveProject: (project: Project) => void
+  onShowDashboard: (view: 'active' | 'archived') => void
+  dashboardView: 'active' | 'archived'
+  archivedProjectCount: number
   onRetry: () => void
 }
 
@@ -46,7 +50,10 @@ export function ProjectSidebar({
   onSelectProject,
   onCreateProject,
   onEditProject,
-  onDeleteProject,
+  onArchiveProject,
+  onShowDashboard,
+  dashboardView,
+  archivedProjectCount,
   onRetry,
 }: ProjectSidebarProps) {
   const systemProjects = projects.filter((project) => project.system)
@@ -113,6 +120,38 @@ export function ProjectSidebar({
           New project
         </Button>
       </Box>
+
+      <List disablePadding sx={{ px: 1.25, pt: 2 }}>
+        <ListItem disablePadding sx={{ mb: 0.5 }}>
+          <ListItemButton
+            selected={selectedProjectId === null && dashboardView === 'active'}
+            sx={{
+              borderRadius: 1,
+              '&.Mui-selected': { bgcolor: 'rgba(91, 97, 232, 0.08)', color: 'primary.dark' },
+              '&.Mui-selected:hover': { bgcolor: 'rgba(91, 97, 232, 0.14)' },
+            }}
+            onClick={() => onShowDashboard('active')}
+          >
+            <DashboardOutlinedIcon fontSize="small" sx={{ color: 'primary.main', mr: 1.25 }} />
+            <ListItemText primary="Project overview" />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton
+            selected={selectedProjectId === null && dashboardView === 'archived'}
+            sx={{
+              borderRadius: 1,
+              '&.Mui-selected': { bgcolor: 'rgba(91, 97, 232, 0.08)', color: 'primary.dark' },
+              '&.Mui-selected:hover': { bgcolor: 'rgba(91, 97, 232, 0.14)' },
+            }}
+            onClick={() => onShowDashboard('archived')}
+          >
+            <ArchiveOutlinedIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1.25 }} />
+            <ListItemText primary="Archive" />
+            <Chip label={archivedProjectCount} size="small" sx={{ bgcolor: 'action.hover', fontWeight: 700 }} />
+          </ListItemButton>
+        </ListItem>
+      </List>
 
       <Stack
         direction="row"
@@ -216,21 +255,17 @@ export function ProjectSidebar({
                     <EditOutlinedIcon fontSize="inherit" />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Delete project">
+                <Tooltip title="Archive project">
                   <IconButton
-                    aria-label={`Delete ${project.name}`}
-                    color="error"
+                    aria-label={`Archive ${project.name}`}
                     size="small"
                     sx={{
                       transition: 'background-color 160ms ease, transform 160ms ease',
-                      '&:hover': {
-                        bgcolor: 'rgba(211, 47, 47, 0.08)',
-                        transform: 'scale(1.08)',
-                      },
+                      '&:hover': { bgcolor: 'action.hover', transform: 'scale(1.08)' },
                     }}
-                    onClick={() => onDeleteProject(project)}
+                    onClick={() => onArchiveProject(project)}
                   >
-                    <DeleteOutlineRoundedIcon fontSize="inherit" />
+                    <ArchiveOutlinedIcon fontSize="inherit" />
                   </IconButton>
                 </Tooltip>
               </Stack>

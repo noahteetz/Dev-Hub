@@ -6,7 +6,10 @@ import type {
   Note,
   NoteInput,
   Project,
+  ProjectContextInput,
   ProjectInput,
+  ProjectOrganizationInput,
+  RepositoryConnection,
   Tag,
   Todo,
   TodoInput,
@@ -53,7 +56,7 @@ function jsonBody(value: unknown): BodyInit {
 
 export const api = {
   projects: {
-    list: () => request<Project[]>('/api/projects'),
+    list: (archived = false) => request<Project[]>(`/api/projects?archived=${archived}`),
     create: (input: ProjectInput) =>
       request<Project>('/api/projects', {
         method: 'POST',
@@ -64,9 +67,36 @@ export const api = {
         method: 'PUT',
         body: jsonBody(input),
       }),
+    updateOrganization: (projectId: number, input: ProjectOrganizationInput) =>
+      request<Project>(`/api/projects/${projectId}/organization`, {
+        method: 'PATCH',
+        body: jsonBody(input),
+      }),
+    updateContext: (projectId: number, input: ProjectContextInput) =>
+      request<Project>(`/api/projects/${projectId}/context`, {
+        method: 'PUT',
+        body: jsonBody(input),
+      }),
+    archive: (projectId: number, reason = '') =>
+      request<Project>(`/api/projects/${projectId}/archive`, {
+        method: 'POST',
+        body: jsonBody({ reason }),
+      }),
+    restore: (projectId: number) =>
+      request<Project>(`/api/projects/${projectId}/restore`, {
+        method: 'POST',
+      }),
     remove: (projectId: number) =>
       request<void>(`/api/projects/${projectId}`, {
         method: 'DELETE',
+      }),
+  },
+  repository: {
+    get: (projectId: number) =>
+      request<RepositoryConnection>(`/api/projects/${projectId}/repository`),
+    refresh: (projectId: number) =>
+      request<RepositoryConnection>(`/api/projects/${projectId}/repository/refresh`, {
+        method: 'POST',
       }),
   },
   notes: {

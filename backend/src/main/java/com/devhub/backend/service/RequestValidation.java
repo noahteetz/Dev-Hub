@@ -49,6 +49,35 @@ final class RequestValidation {
 		return value == null || value.isBlank() ? "" : requiredUrl(value, fieldName);
 	}
 
+	static String optionalRepositoryUrl(String value, String fieldName) {
+		if (value == null || value.isBlank()) {
+			return "";
+		}
+
+		String url = value.trim();
+		if (url.matches("^git@[A-Za-z0-9.-]+:.+$")) {
+			return url;
+		}
+
+		try {
+			URI uri = new URI(url);
+			String scheme = uri.getScheme();
+			if (!uri.isAbsolute()
+					|| !("http".equalsIgnoreCase(scheme)
+						|| "https".equalsIgnoreCase(scheme)
+						|| "ssh".equalsIgnoreCase(scheme))
+					|| uri.getHost() == null
+					|| uri.getPath() == null
+					|| uri.getPath().isBlank()
+			) {
+				throw new InvalidRequestException(fieldName + " must be a valid Git repository URL");
+			}
+			return url;
+		} catch (URISyntaxException exception) {
+			throw new InvalidRequestException(fieldName + " must be a valid Git repository URL");
+		}
+	}
+
 	static String requiredUrl(String value, String fieldName) {
 		String url = required(value, fieldName);
 		try {
