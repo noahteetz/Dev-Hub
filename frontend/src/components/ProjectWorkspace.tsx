@@ -35,6 +35,7 @@ import type { ReactNode } from 'react'
 import type { CodeSnippet, Idea, Note, Project, RepositoryConnection, Todo } from '../types'
 import { formatDate } from '../utils/formatDate'
 import { EmptyState } from './EmptyState'
+import { MarkdownView } from './MarkdownView'
 import { RepositoryPanel } from './RepositoryPanel'
 
 export type WorkspaceTab = 'notes' | 'snippets' | 'ideas' | 'todos'
@@ -192,9 +193,10 @@ function NoteCard({
             <Typography noWrap sx={{ fontWeight: 750 }}>
               {note.title}
             </Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.75, whiteSpace: 'pre-wrap' }} variant="body2">
-              {note.content}
-            </Typography>
+            <MarkdownView
+              content={note.content}
+              sx={{ color: 'text.secondary', fontSize: 14, maxHeight: 260, mt: 0.75, overflow: 'hidden' }}
+            />
           </Box>
           <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
             <Tooltip title="Edit note">
@@ -530,7 +532,7 @@ function WorkspaceHeader({
         </Typography>
       </Box>
 
-      {project && !project.system ? (
+      {project ? (
         <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
           {project.repositoryUrl ? (
             <Tooltip title="Open repository">
@@ -675,7 +677,7 @@ export function ProjectWorkspace({
     )
   }
 
-  const isSystemSection = project.system
+  const isSystemSection = false
   const filteredIdeas = tagFilter
     ? ideas.filter((idea) => idea.tags.some((tag) => tag.name === tagFilter))
     : ideas

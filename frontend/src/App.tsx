@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Box, Snackbar } from '@mui/material'
+import { Alert, Box, Button, Snackbar } from '@mui/material'
+import { useLocation, useNavigate } from 'react-router-dom'
 import './App.css'
 import { api } from './api'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -12,7 +13,14 @@ import { ProjectSidebar, type ApiState } from './components/ProjectSidebar'
 import { ProjectWorkspace, type WorkspaceTab } from './components/ProjectWorkspace'
 import { SnippetDialog } from './components/SnippetDialog'
 import { TodoDialog } from './components/TodoDialog'
+import { KnowledgeView } from './components/KnowledgeView'
+import { QuickCaptureDialog } from './components/QuickCaptureDialog'
+import { CommandPalette } from './components/CommandPalette'
+import { EntryEditor } from './components/EntryEditor'
+import { SearchView } from './components/SearchView'
+import { SettingsView } from './components/SettingsView'
 import type {
+  ContentType,
   CodeSnippet,
   CodeSnippetInput,
   Idea,
@@ -26,6 +34,8 @@ import type {
   RepositoryConnection,
   Todo,
   TodoInput,
+  CaptureInput,
+  ContentEntry,
 } from './types'
 
 type ProjectDialogState = {
@@ -77,6 +87,7 @@ type SavingAction =
   | 'organization'
   | 'repository'
   | 'archive'
+  | 'capture'
   | null
 
 function errorMessage(error: unknown) {
@@ -88,16 +99,26 @@ function replaceItem<T extends { id: number }>(items: T[], updated: T) {
 }
 
 function App() {
+	const location = useLocation()
+	const navigate = useNavigate()
+	const projectMatch = /^\/projects\/(\d+)$/.exec(location.pathname)
+	const entryMatch = /^\/(notes|snippets|ideas|todos)\/(\d+)$/.exec(location.pathname)
+	const entryType: ContentType | null = entryMatch
+		? ({ notes: 'NOTE', snippets: 'SNIPPET', ideas: 'IDEA', todos: 'TODO' } as const)[entryMatch[1] as 'notes' | 'snippets' | 'ideas' | 'todos']
+		: null
+	const knownRoute = location.pathname === '/' || /^\/(dashboard|archive|inbox|notes|ideas|search|settings)$/.test(location.pathname) || projectMatch || entryMatch
+	const routeProjectId = projectMatch ? Number(projectMatch[1]) : null
   const [projects, setProjects] = useState<Project[]>([])
   const [archivedProjects, setArchivedProjects] = useState<Project[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
-  const [dashboardView, setDashboardView] = useState<DashboardView>('active')
+  const selectedProjectId = routeProjectId
+  const dashboardView: DashboardView = location.pathname === '/archive' ? 'archived' : 'active'
   const [notes, setNotes] = useState<Note[]>([])
   const [snippets, setSnippets] = useState<CodeSnippet[]>([])
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [todos, setTodos] = useState<Todo[]>([])
   const [tagOptions, setTagOptions] = useState<string[]>([])
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('notes')
+  const requestedTab = new URLSearchParams(location.search).get('tab')
+  const activeTab: WorkspaceTab = requestedTab === 'snippets' || requestedTab === 'ideas' || requestedTab === 'todos' ? requestedTab : 'notes'
   const [apiState, setApiState] = useState<ApiState>('loading')
   const [contentLoading, setContentLoading] = useState(false)
   const [savingAction, setSavingAction] = useState<SavingAction>(null)
@@ -111,15 +132,14 @@ function App() {
   const [repositoryLoading, setRepositoryLoading] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null)
   const [notice, setNotice] = useState<Notice>(null)
+  const [captureOpen, setCaptureOpen] = useState(false)
+  const [editingEntry, setEditingEntry] = useState<ContentEntry | null>(null)
+  const [captureError, setCaptureError] = useState('')
+  const [knowledgeVersion, setKnowledgeVersion] = useState(0)
+  const [commandOpen, setCommandOpen] = useState(false)
 
   const applyProjects = useCallback((loadedProjects: Project[]) => {
     setProjects(loadedProjects)
-    setSelectedProjectId((currentId) => {
-      if (currentId && loadedProjects.some((project) => project.id === currentId)) {
-        return currentId
-      }
-      return null
-    })
   }, [])
 
   const loadProjects = useCallback(async () => {
@@ -188,13 +208,36 @@ function App() {
     projects.find((project) => project.id === selectedProjectId) ?? null
 
   useEffect(() => {
+    if (location.pathname === '/') navigate('/dashboard', { replace: true })
+  }, [location.pathname, navigate])
+  const knowledgeMode = location.pathname === '/inbox' ? 'inbox' : location.pathname === '/notes' ? 'notes' : location.pathname === '/ideas' ? 'ideas' : null
+  const searchRoute = location.pathname === '/search'
+  const settingsRoute = location.pathname === '/settings'
+  const routePage = !knownRoute ? 'Page not found' : null
+  // Views without the project sidebar use the full width of the shell grid.
+  const fullWidth = Boolean(routePage || entryMatch || searchRoute || settingsRoute || knowledgeMode)
+
+  useEffect(() => {
+    const openShortcut = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.code === 'Space') {
+        event.preventDefault(); setEditingEntry(null); setCaptureError(''); setCaptureOpen(true)
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault(); setCommandOpen(true)
+      }
+    }
+    window.addEventListener('keydown', openShortcut)
+    return () => window.removeEventListener('keydown', openShortcut)
+  }, [])
+
+  useEffect(() => {
     if (!selectedProjectId) {
       return
     }
 
     let active = true
     const project = projects.find((candidate) => candidate.id === selectedProjectId)
-    const shouldLoadRepository = Boolean(project && !project.system && project.repositoryUrl)
+    const shouldLoadRepository = Boolean(project?.repositoryUrl)
 
     Promise.all([
       api.notes.list(selectedProjectId),
@@ -255,7 +298,7 @@ function App() {
         setProjects((current) => replaceItem(current, updated))
         if (selectedProjectId === updated.id) {
           setRepository(null)
-          setRepositoryLoading(Boolean(!updated.system && updated.repositoryUrl))
+          setRepositoryLoading(Boolean(updated.repositoryUrl))
         }
         setNotice({ message: 'Project updated.', severity: 'success' })
       } else {
@@ -263,10 +306,8 @@ function App() {
         setProjects((current) => [created, ...current])
         setContentLoading(true)
         setRepository(null)
-        setRepositoryLoading(Boolean(!created.system && created.repositoryUrl))
-        setSelectedProjectId(created.id)
-        setDashboardView('active')
-        setActiveTab('notes')
+        setRepositoryLoading(Boolean(created.repositoryUrl))
+        navigate(`/projects/${created.id}?tab=notes`)
         setNotice({ message: 'Project created.', severity: 'success' })
       }
       setProjectDialog(null)
@@ -275,6 +316,18 @@ function App() {
     } finally {
       setSavingAction(null)
     }
+  }
+
+  async function saveCapturedEntry(input: CaptureInput, keepOpen: boolean) {
+    setSavingAction('capture'); setCaptureError('')
+    try {
+      if (editingEntry) await api.content.update(editingEntry, input)
+      else await api.content.capture(input)
+      setKnowledgeVersion((current) => current + 1)
+      setNotice({ message: editingEntry ? 'Entry updated.' : 'Thought captured.', severity: 'success' })
+      if (editingEntry || !keepOpen) { setCaptureOpen(false); setEditingEntry(null) }
+    } catch (error) { setCaptureError(errorMessage(error)) }
+    finally { setSavingAction(null) }
   }
 
   async function saveContext(input: ProjectContextInput) {
@@ -338,7 +391,7 @@ function App() {
       const restored = await api.projects.restore(project.id)
       setArchivedProjects((current) => current.filter((candidate) => candidate.id !== project.id))
       setProjects((current) => [restored, ...current])
-      setDashboardView('active')
+      navigate('/dashboard')
       setNotice({ message: 'Project restored.', severity: 'success' })
     } catch (error) {
       setNotice({ message: errorMessage(error), severity: 'error' })
@@ -475,7 +528,7 @@ function App() {
         convertedTodoId: todo.id,
       }))
       mergeTagOptions(todo.tags)
-      setActiveTab('todos')
+      navigate(`/projects/${selectedProjectId}?tab=todos`)
       setNotice({ message: 'Idea converted to a todo.', severity: 'success' })
     } catch (error) {
       setNotice({ message: errorMessage(error), severity: 'error' })
@@ -524,10 +577,7 @@ function App() {
           setRepository(null)
           setContentLoading(false)
         }
-        setSelectedProjectId((currentId) =>
-          currentId === archivedProjectId ? null : currentId,
-        )
-        setDashboardView('active')
+        if (selectedProjectId === archivedProjectId) navigate('/dashboard')
         setNotice({ message: 'Project archived.', severity: 'success' })
       } else if (pendingDelete.type === 'note') {
         await api.notes.remove(pendingDelete.projectId, pendingDelete.note.id)
@@ -582,7 +632,36 @@ function App() {
             : 'Delete todo'
 
   return (
-    <Box className="app-shell">
+    <Box className={`app-shell${fullWidth ? ' app-shell--full' : ''}`}>
+      {routePage ? (
+        <Box component="main" sx={{ p: 5 }}><h1>{routePage}</h1></Box>
+      ) : entryMatch && entryType ? (
+        <EntryEditor
+          entryId={Number(entryMatch[2])}
+          key={location.pathname}
+          projects={[...projects, ...archivedProjects]}
+          type={entryType}
+          onChanged={() => setKnowledgeVersion((current) => current + 1)}
+        />
+      ) : settingsRoute ? (
+        <SettingsView onProjectsChanged={() => void loadProjects()} />
+      ) : searchRoute ? (
+        <SearchView
+          projects={[...projects, ...archivedProjects]}
+          onCapture={() => { setEditingEntry(null); setCaptureError(''); setCaptureOpen(true) }}
+        />
+      ) : knowledgeMode ? (
+        <KnowledgeView
+          mode={knowledgeMode}
+          projects={[...projects, ...archivedProjects]}
+          version={knowledgeVersion}
+          onCapture={() => { setEditingEntry(null); setCaptureError(''); setCaptureOpen(true) }}
+          onEdit={(entry) => navigate(`/${entry.type.toLowerCase()}s/${entry.id}`)}
+          onChanged={() => setKnowledgeVersion((current) => current + 1)}
+          onProjectsChanged={() => void loadProjects()}
+        />
+      ) : (
+        <>
       <ProjectSidebar
         apiState={apiState}
         archivedProjectCount={archivedProjects.length}
@@ -592,10 +671,9 @@ function App() {
         onEditProject={(project) => setProjectDialog({ project })}
         onRetry={() => void loadProjects()}
         onShowDashboard={(view) => {
-          setSelectedProjectId(null)
           setRepository(null)
           setRepositoryLoading(false)
-          setDashboardView(view)
+          navigate(view === 'archived' ? '/archive' : '/dashboard')
         }}
         onSelectProject={(projectId) => {
           if (projectId !== selectedProjectId) {
@@ -603,10 +681,8 @@ function App() {
           }
           const project = projects.find((candidate) => candidate.id === projectId)
           setRepository(null)
-          setRepositoryLoading(Boolean(project && !project.system && project.repositoryUrl))
-          setDashboardView('active')
-          setSelectedProjectId(projectId)
-          setActiveTab('notes')
+          setRepositoryLoading(Boolean(project?.repositoryUrl))
+          navigate(`/projects/${projectId}?tab=notes`)
         }}
         projects={projects}
         selectedProjectId={selectedProjectId}
@@ -646,7 +722,7 @@ function App() {
               : undefined
           }
           onEditContext={() => setContextDialog({ project: selectedProject })}
-          onEditNote={(note) => setNoteDialog({ note })}
+          onEditNote={(note) => navigate(`/notes/${note.id}`)}
           onEditProject={() => setProjectDialog({ project: selectedProject })}
           onEditSnippet={(snippet) => setSnippetDialog({ snippet })}
           onEditIdea={(idea) => setIdeaDialog({ idea })}
@@ -654,7 +730,7 @@ function App() {
           onConvertIdea={(idea) => void convertIdea(idea)}
           onRefreshRepository={() => void refreshRepository()}
           onToggleTodo={(todo) => void toggleTodo(todo)}
-          onTabChange={setActiveTab}
+          onTabChange={(tab) => navigate(`/projects/${selectedProject.id}?tab=${tab}`)}
           project={selectedProject}
           repository={repository}
           repositoryLoading={repositoryLoading}
@@ -673,17 +749,36 @@ function App() {
           onSelectProject={(projectId) => {
             const project = projects.find((candidate) => candidate.id === projectId)
             setRepository(null)
-            setRepositoryLoading(Boolean(project && !project.system && project.repositoryUrl))
-            setDashboardView('active')
-            setSelectedProjectId(projectId)
-            setActiveTab('notes')
+            setRepositoryLoading(Boolean(project?.repositoryUrl))
+            navigate(`/projects/${projectId}?tab=notes`)
             setContentLoading(true)
           }}
           onUpdateOrganization={(projectId, input) => void updateOrganization(projectId, input)}
-          onViewChange={(view) => setDashboardView(view)}
+          onViewChange={(view) => navigate(view === 'archived' ? '/archive' : '/dashboard')}
           view={dashboardView}
         />
       )}
+        </>
+      )}
+
+      <Button
+        aria-label="Quick capture"
+        sx={{ position: 'fixed', right: 24, bottom: 24, zIndex: 1200, boxShadow: 4 }}
+        variant="contained"
+        onClick={() => { setEditingEntry(null); setCaptureError(''); setCaptureOpen(true) }}
+      >
+        Capture
+      </Button>
+      <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+      <QuickCaptureDialog
+        key={`${captureOpen}-${editingEntry?.type ?? 'new'}-${editingEntry?.id ?? 0}`}
+        entry={editingEntry}
+        error={captureError}
+        open={captureOpen}
+        saving={savingAction === 'capture'}
+        onClose={() => { setCaptureOpen(false); setEditingEntry(null) }}
+        onSubmit={saveCapturedEntry}
+      />
 
       {projectDialog ? (
         <ProjectDialog

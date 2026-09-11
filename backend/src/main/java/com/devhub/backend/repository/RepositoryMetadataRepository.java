@@ -2,6 +2,7 @@ package com.devhub.backend.repository;
 
 import com.devhub.backend.model.RepositoryMetadata;
 import com.devhub.backend.model.RepositoryProvider;
+import com.devhub.backend.model.RepositoryRateLimit;
 import com.devhub.backend.model.RepositoryReference;
 import com.devhub.backend.model.RepositorySnapshot;
 import com.devhub.backend.model.RepositorySyncStatus;
@@ -26,7 +27,7 @@ public class RepositoryMetadataRepository {
 					last_commit_sha, last_commit_message, last_commit_author, last_commit_at,
 					readme_file_name, readme_content, languages_json, sync_status, last_attempt_at,
 					last_successful_sync_at, error_code, error_message, branches_url, issues_url,
-					pull_requests_url
+					pull_requests_url, etag, rate_limit_limit, rate_limit_remaining, rate_limit_reset_at
 				FROM repository_metadata
 			""";
 
@@ -76,11 +77,18 @@ public class RepositoryMetadataRepository {
 		jdbcTemplate.update("DELETE FROM repository_metadata WHERE project_id = ?", projectId);
 	}
 
-	public void saveSuccess(long projectId, RepositoryReference reference, RepositorySnapshot snapshot) {
+	public void saveSuccess(
+			long projectId,
+			RepositoryReference reference,
+			RepositorySnapshot snapshot,
+			String etag,
+			RepositoryRateLimit rateLimit
+	) {
 		Instant now = Instant.now();
 		String languages = writeLanguages(snapshot.languages());
+		RepositoryRateLimit quota = rateLimit == null ? RepositoryRateLimit.UNKNOWN : rateLimit;
 		int updated = jdbcTemplate.update(
-				"UPDATE repository_metadata SET provider = ?, owner_name = ?, repository_name = ?, canonical_url = ?, default_branch = ?, last_commit_sha = ?, last_commit_message = ?, last_commit_author = ?, last_commit_at = ?, readme_file_name = ?, readme_content = ?, languages_json = ?, sync_status = ?, last_attempt_at = ?, last_successful_sync_at = ?, error_code = '', error_message = '', branches_url = ?, issues_url = ?, pull_requests_url = ? WHERE project_id = ?",
+				"UPDATE repository_metadata SET provider = ?, owner_name = ?, repository_name = ?, canonical_url = ?, default_branch = ?, last_commit_sha = ?, last_commit_message = ?, last_commit_author = ?, last_commit_at = ?, readme_file_name = ?, readme_content = ?, languages_json = ?, sync_status = ?, last_attempt_at = ?, last_successful_sync_at = ?, error_code = '', error_message = '', branches_url = ?, issues_url = ?, pull_requests_url = ?, etag = ?, rate_limit_limit = ?, rate_limit_remaining = ?, rate_limit_reset_at = ? WHERE project_id = ?",
 				reference.provider().name(),
 				reference.owner(),
 				reference.repositoryName(),
@@ -99,11 +107,15 @@ public class RepositoryMetadataRepository {
 				snapshot.branchesUrl(),
 				snapshot.issuesUrl(),
 				snapshot.pullRequestsUrl(),
+				etag == null ? "" : etag,
+				quota.limit(),
+				quota.remaining(),
+				timestamp(quota.resetAt()),
 				projectId
 		);
 		if (updated == 0) {
 			jdbcTemplate.update(
-					"INSERT INTO repository_metadata (project_id, provider, owner_name, repository_name, canonical_url, default_branch, last_commit_sha, last_commit_message, last_commit_author, last_commit_at, readme_file_name, readme_content, languages_json, sync_status, last_attempt_at, last_successful_sync_at, branches_url, issues_url, pull_requests_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+					"INSERT INTO repository_metadata (project_id, provider, owner_name, repository_name, canonical_url, default_branch, last_commit_sha, last_commit_message, last_commit_author, last_commit_at, readme_file_name, readme_content, languages_json, sync_status, last_attempt_at, last_successful_sync_at, branches_url, issues_url, pull_requests_url, etag, rate_limit_limit, rate_limit_remaining, rate_limit_reset_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 					projectId,
 					reference.provider().name(),
 					reference.owner(),
@@ -122,9 +134,33 @@ public class RepositoryMetadataRepository {
 					timestamp(now),
 					snapshot.branchesUrl(),
 					snapshot.issuesUrl(),
-					snapshot.pullRequestsUrl()
+					snapshot.pullRequestsUrl(),
+					etag == null ? "" : etag,
+					quota.limit(),
+					quota.remaining(),
+					timestamp(quota.resetAt())
 			);
 		}
+	}
+
+	/**
+	 * The provider answered 304, so the cached metadata is still current. Only the sync
+	 * bookkeeping moves forward.
+	 */
+	public void markUnchanged(long projectId, String etag, RepositoryRateLimit rateLimit) {
+		Instant now = Instant.now();
+		RepositoryRateLimit quota = rateLimit == null ? RepositoryRateLimit.UNKNOWN : rateLimit;
+		jdbcTemplate.update(
+				"UPDATE repository_metadata SET sync_status = ?, last_attempt_at = ?, last_successful_sync_at = ?, error_code = '', error_message = '', etag = ?, rate_limit_limit = ?, rate_limit_remaining = ?, rate_limit_reset_at = ? WHERE project_id = ?",
+				RepositorySyncStatus.READY.name(),
+				timestamp(now),
+				timestamp(now),
+				etag == null ? "" : etag,
+				quota.limit(),
+				quota.remaining(),
+				timestamp(quota.resetAt()),
+				projectId
+		);
 	}
 
 	public void saveFailure(
@@ -132,11 +168,13 @@ public class RepositoryMetadataRepository {
 			RepositoryReference reference,
 			RepositorySyncStatus status,
 			String errorCode,
-			String errorMessage
+			String errorMessage,
+			RepositoryRateLimit rateLimit
 	) {
 		Instant now = Instant.now();
+		RepositoryRateLimit quota = rateLimit == null ? RepositoryRateLimit.UNKNOWN : rateLimit;
 		int updated = jdbcTemplate.update(
-				"UPDATE repository_metadata SET provider = ?, owner_name = ?, repository_name = ?, canonical_url = ?, sync_status = ?, last_attempt_at = ?, error_code = ?, error_message = ? WHERE project_id = ?",
+				"UPDATE repository_metadata SET provider = ?, owner_name = ?, repository_name = ?, canonical_url = ?, sync_status = ?, last_attempt_at = ?, error_code = ?, error_message = ?, rate_limit_limit = ?, rate_limit_remaining = ?, rate_limit_reset_at = ? WHERE project_id = ?",
 				reference.provider().name(),
 				reference.owner(),
 				reference.repositoryName(),
@@ -145,11 +183,14 @@ public class RepositoryMetadataRepository {
 				timestamp(now),
 				errorCode,
 				errorMessage,
+				quota.limit(),
+				quota.remaining(),
+				timestamp(quota.resetAt()),
 				projectId
 		);
 		if (updated == 0) {
 			jdbcTemplate.update(
-					"INSERT INTO repository_metadata (project_id, provider, owner_name, repository_name, canonical_url, sync_status, last_attempt_at, error_code, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+					"INSERT INTO repository_metadata (project_id, provider, owner_name, repository_name, canonical_url, sync_status, last_attempt_at, error_code, error_message, rate_limit_limit, rate_limit_remaining, rate_limit_reset_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 					projectId,
 					reference.provider().name(),
 					reference.owner(),
@@ -158,7 +199,10 @@ public class RepositoryMetadataRepository {
 					status.name(),
 					timestamp(now),
 					errorCode,
-					errorMessage
+					errorMessage,
+					quota.limit(),
+					quota.remaining(),
+					timestamp(quota.resetAt())
 			);
 		}
 	}
@@ -185,7 +229,13 @@ public class RepositoryMetadataRepository {
 				resultSet.getString("error_message"),
 				resultSet.getString("branches_url"),
 				resultSet.getString("issues_url"),
-				resultSet.getString("pull_requests_url")
+				resultSet.getString("pull_requests_url"),
+				resultSet.getString("etag"),
+				new RepositoryRateLimit(
+						nullableInt(resultSet, "rate_limit_limit"),
+						nullableInt(resultSet, "rate_limit_remaining"),
+						toInstant(resultSet.getTimestamp("rate_limit_reset_at"))
+				)
 		);
 	}
 
@@ -207,6 +257,11 @@ public class RepositoryMetadataRepository {
 		} catch (JacksonException exception) {
 			return Collections.emptyMap();
 		}
+	}
+
+	private static Integer nullableInt(ResultSet resultSet, String column) throws SQLException {
+		int value = resultSet.getInt(column);
+		return resultSet.wasNull() ? null : value;
 	}
 
 	private static Timestamp timestamp(Instant value) {

@@ -4,6 +4,10 @@ import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
+import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 import {
   Avatar,
   Box,
@@ -21,6 +25,7 @@ import {
   Typography,
 } from '@mui/material'
 import { Fragment } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Project } from '../types'
 
 export type ApiState = 'loading' | 'ready' | 'error'
@@ -56,9 +61,8 @@ export function ProjectSidebar({
   archivedProjectCount,
   onRetry,
 }: ProjectSidebarProps) {
-  const systemProjects = projects.filter((project) => project.system)
-  const regularProjects = projects.filter((project) => !project.system)
-  const visibleProjects = [...systemProjects, ...regularProjects]
+  const navigate = useNavigate()
+  const visibleProjects = projects
 
   return (
     <Paper
@@ -151,30 +155,15 @@ export function ProjectSidebar({
             <Chip label={archivedProjectCount} size="small" sx={{ bgcolor: 'action.hover', fontWeight: 700 }} />
           </ListItemButton>
         </ListItem>
+        <ListItem disablePadding sx={{ mt: 1 }}><ListItemButton sx={{ borderRadius: 1 }} onClick={() => navigate('/inbox')}><InboxOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} /><ListItemText primary="Inbox" /></ListItemButton></ListItem>
+        <ListItem disablePadding><ListItemButton sx={{ borderRadius: 1 }} onClick={() => navigate('/notes')}><DescriptionOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} /><ListItemText primary="All notes" /></ListItemButton></ListItem>
+        <ListItem disablePadding><ListItemButton sx={{ borderRadius: 1 }} onClick={() => navigate('/ideas')}><LightbulbOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} /><ListItemText primary="All ideas" /></ListItemButton></ListItem>
+        <ListItem disablePadding><ListItemButton sx={{ borderRadius: 1 }} onClick={() => navigate('/settings')}><SettingsOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} /><ListItemText primary="Settings" /></ListItemButton></ListItem>
       </List>
 
-      <Stack
-        direction="row"
-        sx={{
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2.5,
-          pb: 1,
-          pt: 3,
-        }}
-      >
-        <Typography
-          color="text.secondary"
-          sx={{ fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }}
-          variant="caption"
-        >
-          Spaces
-        </Typography>
-        <Chip
-          label={systemProjects.length}
-          size="small"
-          sx={{ bgcolor: 'action.hover', fontWeight: 700 }}
-        />
+      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', px: 2.5, pb: 1, pt: 3 }}>
+        <Typography color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }} variant="caption">Projects</Typography>
+        <Chip label={visibleProjects.length} size="small" sx={{ bgcolor: 'action.hover', fontWeight: 700 }} />
       </Stack>
 
       <List disablePadding sx={{ flex: 1, overflow: 'auto', px: 1.25 }}>
@@ -199,37 +188,18 @@ export function ProjectSidebar({
           </Stack>
         ) : null}
 
-        {apiState === 'ready' && regularProjects.length === 0 ? (
+        {apiState === 'ready' && visibleProjects.length === 0 ? (
           <Typography color="text.secondary" sx={{ px: 1.25, py: 2 }} variant="body2">
             Create a project to get started.
           </Typography>
         ) : null}
 
-        {visibleProjects.map((project, index) => (
+        {visibleProjects.map((project) => (
           <Fragment key={project.id}>
-            {!project.system && index === systemProjects.length ? (
-              <Stack
-                direction="row"
-                sx={{ alignItems: 'center', justifyContent: 'space-between', pb: 1, pt: 2.5, px: 1.25 }}
-              >
-                <Typography
-                  color="text.secondary"
-                  sx={{ fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }}
-                  variant="caption"
-                >
-                  Projects
-                </Typography>
-                <Chip
-                  label={regularProjects.length}
-                  size="small"
-                  sx={{ bgcolor: 'action.hover', fontWeight: 700 }}
-                />
-              </Stack>
-            ) : null}
             <ListItem
             disablePadding
             secondaryAction={
-              project.system ? undefined : <Stack
+              <Stack
                 className="project-actions"
                 direction="row"
                 spacing={0.25}
@@ -282,7 +252,7 @@ export function ProjectSidebar({
               selected={project.id === selectedProjectId}
               sx={{
                 borderRadius: 1,
-                pr: project.system ? 2 : 11,
+                pr: 11,
                 transition: 'background-color 160ms ease, transform 160ms ease',
                 '&:hover': {
                   bgcolor: 'rgba(91, 97, 232, 0.05)',
@@ -312,7 +282,7 @@ export function ProjectSidebar({
               </Avatar>
               <ListItemText
                 primary={project.name}
-                secondary={project.description || (project.system ? 'Personal space' : 'No description')}
+                secondary={project.description || 'No description'}
                 slotProps={{
                   primary: {
                     noWrap: true,

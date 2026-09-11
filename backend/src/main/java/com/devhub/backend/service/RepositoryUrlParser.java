@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -60,9 +61,9 @@ public class RepositoryUrlParser {
 			throw new InvalidRequestException("Repository URL must contain an owner and repository name");
 		}
 		String owner = segments.size() < 2 ? "" : String.join("/", segments.subList(0, segments.size() - 1));
-		String canonicalPath = String.join("/", segments.subList(0, segments.size() - 1))
-				+ "/" + repositoryName;
-		String canonicalUrl = "https://" + host + "/" + canonicalPath;
+		List<String> canonicalSegments = new ArrayList<>(segments.subList(0, segments.size() - 1));
+		canonicalSegments.add(repositoryName);
+		String canonicalUrl = "https://" + host + "/" + String.join("/", canonicalSegments);
 		return new RepositoryReference(provider, owner, repositoryName, canonicalUrl);
 	}
 

@@ -12,7 +12,6 @@ import com.devhub.backend.model.ProjectLink;
 import com.devhub.backend.model.ProjectStatus;
 import com.devhub.backend.repository.ProjectRepository;
 import com.devhub.backend.repository.RepositoryMetadataRepository;
-import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,27 +37,10 @@ public class ProjectService {
 		return projectRepository.create(
 				RequestValidation.required(body.name(), "Project name"),
 				RequestValidation.optional(body.description()),
-				false,
 				RequestValidation.optionalRepositoryUrl(body.repositoryUrl(), "Repository URL"),
 				RequestValidation.optionalUrl(body.deploymentUrl(), "Deployment URL"),
 				validateLinks(body.links())
 		);
-	}
-
-	@PostConstruct
-	void createSystemSections() {
-		if (projectRepository.findSystemProjects().isEmpty()) {
-			projectRepository.create(
-					"General notes",
-					"Notes that are useful across all of your work.",
-					true
-			);
-			projectRepository.create(
-					"Future project ideas",
-					"Capture ideas worth turning into a project later.",
-					true
-			);
-		}
 	}
 
 	public List<Project> findAll() {
@@ -78,9 +60,6 @@ public class ProjectService {
 	public Project update(long projectId, ProjectRequest request) {
 		long id = RequestValidation.requireId(projectId, "Project");
 		ProjectRequest body = RequestValidation.requireRequest(request);
-		if (getExisting(id).system()) {
-			throw new InvalidRequestException("System sections cannot be changed");
-		}
 		Project existing = getExisting(id);
 		String repositoryUrl = RequestValidation.optionalRepositoryUrl(body.repositoryUrl(), "Repository URL");
 		if (projectRepository.update(
@@ -103,9 +82,6 @@ public class ProjectService {
 	public Project updateOrganization(long projectId, ProjectOrganizationRequest request) {
 		long id = RequestValidation.requireId(projectId, "Project");
 		Project existing = getExisting(id);
-		if (existing.system()) {
-			throw new InvalidRequestException("System sections cannot be changed");
-		}
 		ProjectOrganizationRequest body = RequestValidation.requireRequest(request);
 		ProjectStatus status = body.status() == null ? existing.status() : body.status();
 		int priority = body.priority() == null ? existing.priority() : body.priority();
@@ -123,9 +99,6 @@ public class ProjectService {
 	public Project updateContext(long projectId, ProjectContextRequest request) {
 		long id = RequestValidation.requireId(projectId, "Project");
 		Project existing = getExisting(id);
-		if (existing.system()) {
-			throw new InvalidRequestException("System sections cannot be changed");
-		}
 		ProjectContextRequest body = RequestValidation.requireRequest(request);
 		if (projectRepository.updateContext(
 				id,
@@ -145,9 +118,6 @@ public class ProjectService {
 	public Project archive(long projectId, ProjectArchiveRequest request) {
 		long id = RequestValidation.requireId(projectId, "Project");
 		Project existing = getExisting(id);
-		if (existing.system()) {
-			throw new InvalidRequestException("System sections cannot be archived");
-		}
 		if (existing.status() == ProjectStatus.ARCHIVED) {
 			return existing;
 		}
@@ -160,9 +130,6 @@ public class ProjectService {
 	public Project restore(long projectId) {
 		long id = RequestValidation.requireId(projectId, "Project");
 		Project existing = getExisting(id);
-		if (existing.system()) {
-			throw new InvalidRequestException("System sections cannot be restored");
-		}
 		if (existing.status() != ProjectStatus.ARCHIVED) {
 			return existing;
 		}
@@ -175,9 +142,6 @@ public class ProjectService {
 
 	public void delete(long projectId) {
 		long id = RequestValidation.requireId(projectId, "Project");
-		if (getExisting(id).system()) {
-			throw new InvalidRequestException("System sections cannot be deleted");
-		}
 		if (projectRepository.deleteById(id) == 0) {
 			throw notFound(id);
 		}

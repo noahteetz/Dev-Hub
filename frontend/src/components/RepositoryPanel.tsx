@@ -14,8 +14,10 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import { Link as RouterLink } from 'react-router-dom'
 import type { Project, RepositoryConnection, RepositoryProvider, RepositorySyncStatus } from '../types'
 import { formatDate } from '../utils/formatDate'
+import { MarkdownView } from './MarkdownView'
 
 interface RepositoryPanelProps {
   project: Project
@@ -30,6 +32,8 @@ const statusLabels: Record<RepositorySyncStatus, string> = {
   SYNCING: 'Syncing',
   READY: 'Synced',
   PRIVATE_OR_NOT_FOUND: 'Private or not found',
+  CREDENTIAL_INVALID: 'Token rejected',
+  CREDENTIAL_INSUFFICIENT: 'Token lacks access',
   RATE_LIMITED: 'Rate limited',
   FAILED: 'Sync failed',
   UNSUPPORTED: 'Unsupported provider',
@@ -40,6 +44,8 @@ const statusColors: Record<RepositorySyncStatus, 'default' | 'error' | 'info' | 
   SYNCING: 'info',
   READY: 'success',
   PRIVATE_OR_NOT_FOUND: 'warning',
+  CREDENTIAL_INVALID: 'error',
+  CREDENTIAL_INSUFFICIENT: 'warning',
   RATE_LIMITED: 'warning',
   FAILED: 'error',
   UNSUPPORTED: 'default',
@@ -59,6 +65,15 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
   const metadata = repository?.metadata ?? null
   const syncStatus = metadata?.syncStatus ?? 'NEVER_SYNCED'
   const languageEntries = Object.entries(metadata?.languages ?? {}).sort((left, right) => right[1] - left[1])
+  // Every one of these is fixed in the settings, so the panel offers the way there.
+  const tokenProblem =
+    syncStatus === 'CREDENTIAL_INVALID'
+    || syncStatus === 'CREDENTIAL_INSUFFICIENT'
+    || syncStatus === 'PRIVATE_OR_NOT_FOUND'
+  const remaining = metadata?.rateLimit?.remaining ?? null
+  const quotaLabel = remaining === null
+    ? ''
+    : `${remaining}${metadata?.rateLimit?.limit ? `/${metadata.rateLimit.limit}` : ''} requests left`
 
   return (
     <Box
@@ -103,6 +118,11 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
             <Chip color={statusColors[syncStatus]} label={statusLabels[syncStatus]} size="small" />
             <Chip label={providerLabel(repository?.provider ?? null)} size="small" sx={{ bgcolor: 'action.hover' }} />
             {metadata?.defaultBranch ? <Chip icon={<AccountTreeOutlinedIcon />} label={metadata.defaultBranch} size="small" sx={{ bgcolor: 'action.hover' }} /> : null}
+            {quotaLabel ? (
+              <Tooltip title="Requests left before the provider stops answering">
+                <Chip label={quotaLabel} size="small" sx={{ bgcolor: 'action.hover' }} />
+              </Tooltip>
+            ) : null}
           </Stack>
 
           {metadata?.errorMessage ? (
@@ -110,6 +130,12 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
               {metadata.errorMessage}
               {metadata.lastSuccessfulSyncAt ? ` Last successful sync: ${formatDate(metadata.lastSuccessfulSyncAt)}.` : ''}
             </Typography>
+          ) : null}
+
+          {tokenProblem ? (
+            <Button component={RouterLink} size="small" sx={{ mt: 0.5 }} to="/settings">
+              Open the Git access settings
+            </Button>
           ) : null}
 
           {metadata ? (
@@ -143,9 +169,10 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
                 <>
                   <Divider sx={{ my: 2.5 }} />
                   <Typography sx={{ fontWeight: 800 }}>{metadata.readmeFileName || 'README.md'}</Typography>
-                  <Box component="pre" sx={{ bgcolor: '#172033', borderRadius: 1, color: '#dce7ff', fontFamily: '"ui-monospace", "SFMono-Regular", Consolas, monospace', fontSize: 12.5, lineHeight: 1.65, maxHeight: 240, mb: 0, mt: 1.25, overflow: 'auto', p: 1.75, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {metadata.readmeContent}
-                  </Box>
+                  <MarkdownView
+                    content={metadata.readmeContent}
+                    sx={{ bgcolor: 'action.hover', borderRadius: 1, fontSize: 13.5, maxHeight: 320, mt: 1.25, overflow: 'auto', p: 1.75 }}
+                  />
                 </>
               ) : null}
             </>

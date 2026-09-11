@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded'
 import {
   Box,
   Button,
@@ -13,8 +14,12 @@ import {
   IconButton,
   Stack,
   TextField,
+  Typography,
 } from '@mui/material'
-import type { Project, ProjectInput, ProjectLinkInput } from '../types'
+import { Link as RouterLink } from 'react-router-dom'
+import { api } from '../api'
+import { RepositoryPickerDialog } from './RepositoryPickerDialog'
+import type { Project, ProjectInput, ProjectLinkInput, RepositoryProvider } from '../types'
 
 interface ProjectDialogProps {
   open: boolean
@@ -38,6 +43,37 @@ export function ProjectDialog({
   const [links, setLinks] = useState<ProjectLinkInput[]>(
     project?.links.map(({ label, url }) => ({ label, url })) ?? [],
   )
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [connectedProviders, setConnectedProviders] = useState<RepositoryProvider[]>([])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    let active = true
+    api.gitCredentials
+      .list()
+      .then((overview) => {
+        if (active) {
+          setConnectedProviders(
+            overview.credentials
+              .filter((credential) => credential.status === 'VERIFIED')
+              .map((credential) => credential.provider),
+          )
+        }
+      })
+      // Without a stored token the dialog simply keeps the plain URL field.
+      .catch(() => {
+        if (active) {
+          setConnectedProviders([])
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [open])
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -57,6 +93,7 @@ export function ProjectDialog({
   }
 
   return (
+    <>
     <Dialog fullWidth maxWidth="sm" open={open} onClose={saving ? undefined : onClose}>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogTitle>{project ? 'Edit project' : 'Create a project'}</DialogTitle>
@@ -80,15 +117,30 @@ export function ProjectDialog({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
-          <TextField
-            fullWidth
-            label="Repository URL"
-            margin="normal"
-            placeholder="https://github.com/you/project"
-            type="url"
-            value={repositoryUrl}
-            onChange={(event) => setRepositoryUrl(event.target.value)}
-          />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ alignItems: 'flex-start', mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Repository URL"
+              placeholder="https://github.com/you/project"
+              type="url"
+              value={repositoryUrl}
+              onChange={(event) => setRepositoryUrl(event.target.value)}
+            />
+            <Button
+              disabled={connectedProviders.length === 0}
+              startIcon={<FolderOpenRoundedIcon />}
+              sx={{ flexShrink: 0, mt: { sm: 1 } }}
+              onClick={() => setPickerOpen(true)}
+            >
+              Choose
+            </Button>
+          </Stack>
+          {connectedProviders.length === 0 ? (
+            <Typography color="text.secondary" sx={{ display: 'block', mt: 0.5 }} variant="caption">
+              Connect a token under <RouterLink to="/settings">Settings</RouterLink> to pick from your private
+              repositories instead of pasting a URL.
+            </Typography>
+          ) : null}
           <TextField
             fullWidth
             label="Deployment URL"
@@ -148,5 +200,21 @@ export function ProjectDialog({
         </DialogActions>
       </Box>
     </Dialog>
+    <RepositoryPickerDialog
+      connectedProviders={connectedProviders}
+      open={pickerOpen}
+      onClose={() => setPickerOpen(false)}
+      onSelect={(repository) => {
+        setRepositoryUrl(repository.webUrl)
+        if (!name.trim()) {
+          setName(repository.name)
+        }
+        if (!description.trim()) {
+          setDescription(repository.description)
+        }
+        setPickerOpen(false)
+      }}
+    />
+    </>
   )
 }

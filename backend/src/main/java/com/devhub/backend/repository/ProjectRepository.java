@@ -20,7 +20,7 @@ import org.springframework.stereotype.Repository;
 public class ProjectRepository {
 
 	private static final String SELECT_COLUMNS = """
-			SELECT p.id, p.name, p.description, p.is_system, p.status, p.priority, p.favorite,
+			SELECT p.id, p.name, p.description, p.status, p.priority, p.favorite,
 					p.repository_url, p.deployment_url, p.progress_summary, p.next_step, p.blockers,
 					p.start_command, p.build_command, p.technical_decisions, p.context_updated_at,
 					p.status_before_archive, p.archived_at, p.archive_reason, p.created_at, p.updated_at, rm.last_commit_at
@@ -40,17 +40,12 @@ public class ProjectRepository {
 	}
 
 	public Project create(String name, String description) {
-		return create(name, description, false, "", "", List.of());
-	}
-
-	public Project create(String name, String description, boolean system) {
-		return create(name, description, system, "", "", List.of());
+		return create(name, description, "", "", List.of());
 	}
 
 	public Project create(
 			String name,
 			String description,
-			boolean system,
 			String repositoryUrl,
 			String deploymentUrl,
 			List<ProjectLink> links
@@ -58,14 +53,13 @@ public class ProjectRepository {
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO projects (name, description, is_system, repository_url, deployment_url) VALUES (?, ?, ?, ?, ?)",
+					"INSERT INTO projects (name, description, repository_url, deployment_url) VALUES (?, ?, ?, ?)",
 					new String[]{"id"}
 			);
 			statement.setString(1, name);
 			statement.setString(2, description);
-			statement.setBoolean(3, system);
-			statement.setString(4, repositoryUrl);
-			statement.setString(5, deploymentUrl);
+			statement.setString(3, repositoryUrl);
+			statement.setString(4, deploymentUrl);
 			return statement;
 		}, keyHolder);
 
@@ -84,18 +78,9 @@ public class ProjectRepository {
 	}
 
 	public List<Project> findAll(boolean archived) {
-		String filter = archived
-				? " WHERE p.is_system = FALSE AND p.status = 'ARCHIVED'"
-				: " WHERE p.is_system = TRUE OR p.status <> 'ARCHIVED'";
+		String filter = archived ? " WHERE p.status = 'ARCHIVED'" : " WHERE p.status <> 'ARCHIVED'";
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + filter + " ORDER BY p.is_system DESC, p.favorite DESC, p.priority DESC, COALESCE(rm.last_commit_at, p.context_updated_at, p.created_at) DESC, p.id DESC",
-				this::mapRow
-		).stream().map(this::withLinks).toList();
-	}
-
-	public List<Project> findSystemProjects() {
-		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE p.is_system = TRUE",
+				SELECT_COLUMNS + filter + " ORDER BY p.favorite DESC, p.priority DESC, COALESCE(rm.last_commit_at, p.context_updated_at, p.created_at) DESC, p.id DESC",
 				this::mapRow
 		).stream().map(this::withLinks).toList();
 	}
@@ -132,7 +117,7 @@ public class ProjectRepository {
 
 	public int updateOrganization(long id, ProjectStatus status, int priority, boolean favorite) {
 		return jdbcTemplate.update(
-				"UPDATE projects SET status = ?, priority = ?, favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_system = FALSE",
+			"UPDATE projects SET status = ?, priority = ?, favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 				status.name(),
 				priority,
 				favorite,
@@ -150,7 +135,7 @@ public class ProjectRepository {
 			String technicalDecisions
 	) {
 		return jdbcTemplate.update(
-				"UPDATE projects SET progress_summary = ?, next_step = ?, blockers = ?, start_command = ?, build_command = ?, technical_decisions = ?, context_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_system = FALSE",
+			"UPDATE projects SET progress_summary = ?, next_step = ?, blockers = ?, start_command = ?, build_command = ?, technical_decisions = ?, context_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 				progressSummary,
 				nextStep,
 				blockers,
@@ -163,7 +148,7 @@ public class ProjectRepository {
 
 	public int archive(long id, String reason, ProjectStatus previousStatus) {
 		return jdbcTemplate.update(
-				"UPDATE projects SET status_before_archive = ?, status = 'ARCHIVED', archived_at = CURRENT_TIMESTAMP, archive_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_system = FALSE AND status <> 'ARCHIVED'",
+			"UPDATE projects SET status_before_archive = ?, status = 'ARCHIVED', archived_at = CURRENT_TIMESTAMP, archive_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'ARCHIVED'",
 				previousStatus.name(),
 				reason,
 				id
@@ -172,7 +157,7 @@ public class ProjectRepository {
 
 	public int restore(long id, ProjectStatus restoredStatus) {
 		return jdbcTemplate.update(
-				"UPDATE projects SET status = ?, status_before_archive = NULL, archived_at = NULL, archive_reason = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_system = FALSE AND status = 'ARCHIVED'",
+			"UPDATE projects SET status = ?, status_before_archive = NULL, archived_at = NULL, archive_reason = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'ARCHIVED'",
 				restoredStatus.name(),
 				id
 		);
@@ -211,7 +196,6 @@ public class ProjectRepository {
 				project.id(),
 				project.name(),
 				project.description(),
-				project.system(),
 				project.status(),
 				project.priority(),
 				project.favorite(),
@@ -250,7 +234,6 @@ public class ProjectRepository {
 				resultSet.getLong("id"),
 				resultSet.getString("name"),
 				resultSet.getString("description"),
-				resultSet.getBoolean("is_system"),
 				ProjectStatus.valueOf(resultSet.getString("status")),
 				resultSet.getInt("priority"),
 				resultSet.getBoolean("favorite"),

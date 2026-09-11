@@ -22,6 +22,7 @@ services:
       DATABASE_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-devhub}
       DATABASE_USERNAME: ${POSTGRES_USER:-devhub}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-devhub}
+      DEVHUB_ENCRYPTION_KEY: ${DEVHUB_ENCRYPTION_KEY:-}
     ports:
       - "8080:8080"
     depends_on:

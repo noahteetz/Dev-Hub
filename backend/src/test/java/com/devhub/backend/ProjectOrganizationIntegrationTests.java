@@ -9,6 +9,7 @@ import com.devhub.backend.dto.ProjectRequest;
 import com.devhub.backend.model.Project;
 import com.devhub.backend.model.ProjectStatus;
 import com.devhub.backend.model.RepositoryProvider;
+import com.devhub.backend.model.RepositoryRateLimit;
 import com.devhub.backend.model.RepositoryReference;
 import com.devhub.backend.model.RepositorySnapshot;
 import com.devhub.backend.repository.RepositoryMetadataRepository;
@@ -120,7 +121,9 @@ class ProjectOrganizationIntegrationTests {
 						"https://github.com/example/old-repository/branches",
 						"https://github.com/example/old-repository/issues",
 						"https://github.com/example/old-repository/pulls"
-				)
+				),
+				"",
+				RepositoryRateLimit.UNKNOWN
 		);
 
 		assertThat(repositoryMetadataRepository.findByProjectId(created.id()))

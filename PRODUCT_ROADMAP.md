@@ -474,6 +474,250 @@ Ziel: Mehrere isolierte Arbeitsstroeme koennen sicher parallel laufen.
 
 **Fertig, wenn:** Mehrere Agents parallel arbeiten koennen und alle erzeugten Ressourcen nachvollziehbar zusammengefuehrt oder sicher entfernt werden.
 
+## Konkreter Implementierungsplan fuer Phase 3 und 4
+
+### Ausgangslage
+
+Phase 1 und 2 sind funktional umgesetzt: Flyway mit `V1__initial_schema.sql`, Projektstatus, Prioritaet, Favorit, Archiv, Arbeitskontext, `effectiveActivityAt`, `stale`, Repository-Parser, Metadaten-Cache und die Adapter fuer GitHub und GitLab.
+
+Zwei geplante Punkte fehlen noch und werden zu Beginn von Phase 3 nachgezogen:
+
+- Im Frontend gibt es weder Vitest noch React Testing Library und kein `test`-Skript.
+- Im Backend gibt es keine WireMock-Abhaengigkeit und keine Tests fuer `RepositoryUrlParser`, `RepositoryMetadataService` und die Provider-Adapter.
+
+Ausserdem loesen Phase 3 und 4 eine bewusste Zwischenloesung ab: projektunabhaengige Inhalte liegen heute in den Systemprojekten `General notes` und `Future project ideas`. Diese Konstruktion traegt keine echte Inbox, keine zentrale Filterung und keine saubere Zuordnung.
+
+### Gemeinsame technische Entscheidungen
+
+- **Systemprojekte entfallen.** `project_id` wird auf `notes`, `code_snippets`, `ideas` und `todos` nullable. Ein Eintrag ohne Projekt ist ein Eintrag im globalen Eingang. Die Inhalte der beiden Systembereiche werden per Migration auf `project_id = NULL` gesetzt, danach werden die Systemprojekte und die Spalte `is_system` entfernt. Damit ist "einem Projekt zuordnen" nur noch ein Feldwechsel und kein Umkopieren.
+- **Flache Ressourcenrouten.** Neben den bestehenden verschachtelten Routen entstehen `/api/notes`, `/api/snippets`, `/api/ideas` und `/api/todos` mit Filtern. Die verschachtelten Routen bleiben bestehen und delegieren an denselben Service, damit der vorhandene Projektarbeitsbereich unveraendert weiterlaeuft.
+- **Routing im Frontend kommt in Phase 3.** Ohne adressierbare Ansichten sind weder Eingang noch zentrale Listen noch die dauerhaften Links aus Phase 4 sinnvoll. Eingefuehrt wird `react-router` mit echten Pfaden statt des heutigen reinen Zustandswechsels in `App.tsx`.
+- **Tags werden zum Querschnitt.** `notes` und `code_snippets` erhalten dieselbe Tag-Verknuepfung, die `ideas` und `todos` bereits haben. Ohne das bleiben zentrale Ansichten und Suchfilter lueckenhaft.
+- **Suche bleibt portabel.** Die Suche verwendet portables SQL mit `LOWER(...) LIKE`, damit Tests weiterhin auf H2 und die Produktion auf PostgreSQL laufen. Die persoenliche Datenmenge ist klein. Ein Wechsel auf `tsvector` und GIN bleibt hinter dem `SearchRepository`-Interface moeglich, ohne API oder Frontend zu aendern.
+- **Markdown wird sanitisiert gerendert.** Kein rohes HTML im Notizinhalt, auch bei einem Einzelnutzer nicht. Das Rendern erfolgt an genau einer Stelle im Frontend.
+- **Kein Datenverlust beim Verschieben.** Zuordnung, Umwandlung in ein Projekt und Archivierung aendern nie den Inhalt eines Eintrags, sondern nur seine Zuordnung oder seinen Zustand.
+
+### Phase 3: Globaler Eingang und Wissensbereich
+
+#### P3.0 - Fehlende Testinfrastruktur nachziehen (1 Tag)
+
+- Vitest, React Testing Library, jsdom und ein `test`-Skript im Frontend einrichten
+- Einen Smoke-Test fuer das Dashboard und einen fuer die Gruppierung der Projekte schreiben
+- WireMock im Backend ergaenzen und die in Phase 2 vorgesehenen Provider-Tests nachholen
+- Beide Testlaeufe als Release-Gate fuer alle weiteren Pakete festlegen
+
+**Fertig, wenn:** Frontend- und Backend-Testlauf lokal gruen sind und mindestens ein Provider-Fehlerfall simuliert getestet ist.
+
+#### P3.1 - Routing und Navigationsgeruest (2 Tage)
+
+Der heutige Zustandswechsel in `App.tsx` wird durch echte Routen ersetzt:
+
+- `/` leitet auf `/dashboard`
+- `/dashboard` und `/archive`
+- `/projects/:projectId` mit `?tab=notes|snippets|ideas|todos`
+- `/inbox`
+- `/notes` und `/ideas` als zentrale Ansichten
+- `/search`
+
+Regeln:
+
+- Unbekannte Routen zeigen eine klare Nicht-gefunden-Ansicht statt eines leeren Bildschirms.
+- Filter und Sortierung wandern von `localStorage` in Query-Parameter, damit ein Zustand teilbar ist. `localStorage` bleibt nur noch fuer den Startzustand ohne Parameter.
+- `App.tsx` wird dabei entlastet: Daten werden pro Route geladen statt in einem gemeinsamen Zustandsbaum fuer alles.
+
+**Risiko:** Das ist der groesste Umbau in Phase 3, weil `App.tsx` heute alle Dialoge, Ladezustaende und Listen haelt. Der Umbau erfolgt vor den neuen Ansichten, nicht parallel dazu.
+
+#### P3.2 - Datenmodell fuer projektunabhaengige Eintraege (2 Tage)
+
+Migration `V2` mit folgenden Schritten in fester Reihenfolge:
+
+1. `project_id` auf `notes`, `code_snippets`, `ideas` und `todos` nullable machen und die Fremdschluessel auf `ON DELETE CASCADE` belassen.
+2. Neue Spalten ergaenzen:
+   - `source_url` auf `notes` und `ideas` als Freitext-URL, damit Links ohne eigene Entitaet erfassbar sind
+   - `archived` und `archived_at` auf `notes`, `code_snippets` und `ideas`; `todos` nutzen weiterhin `completed`
+   - `filed_at` auf allen vier Tabellen: Zeitpunkt der Zuordnung zu einem Projekt, `NULL` solange der Eintrag im Eingang liegt
+3. `note_tags` und `snippet_tags` analog zu `idea_tags` und `todo_tags` anlegen.
+4. Inhalte der Systemprojekte auf `project_id = NULL` setzen.
+5. Die beiden Systemprojekte loeschen und die Spalte `is_system` entfernen.
+
+**Ergebnis und Tests**
+
+- Migration laeuft auf leerer und auf befuellter Datenbank sowie auf H2 und PostgreSQL.
+- Ein Test mit Bestandsdaten belegt, dass jeder Eintrag aus einem Systembereich danach unveraendert im Eingang liegt.
+- Ein Test belegt, dass Eintraege mit Projektbezug unveraendert bleiben.
+- Das Loeschen eines Projekts loescht weiterhin dessen Inhalte, aber nie Eingangs-Eintraege.
+
+**Bewusste Entscheidung:** Links werden nicht als eigene Entitaet modelliert. Ein erfasster Link ist eine Notiz oder Idee mit `source_url`. Eine eigene Bookmark-Entitaet lohnt erst, wenn Linksammlungen im Alltag tatsaechlich getrennt gepflegt werden.
+
+#### P3.3 - Flache Inhalts-API und Zuordnung (2 Tage)
+
+**Listen mit Filtern**
+
+- `GET /api/notes`, `/api/snippets`, `/api/ideas`, `/api/todos`
+- Parameter: `scope=all|inbox|project`, `projectId`, `tags`, `archived`, `completed`, `converted`, `sort`, `limit`, `offset`
+- `scope=inbox` bedeutet `project_id IS NULL`
+
+**Zuordnung und Umwandlung**
+
+- `PATCH /api/notes/{id}/assignment` mit `projectId` oder `null`; analog fuer die anderen drei Typen
+- `POST /api/inbox/{type}/{id}/promote` legt ein neues Projekt aus dem Eintrag an, uebernimmt Titel und Beschreibung und ordnet den Eintrag dem neuen Projekt zu
+- `PATCH /api/notes/{id}/archive` mit `archived` als Boolean; analog fuer Snippets und Ideen
+
+**Backend-Regeln**
+
+- Eine Zuordnung setzt `filed_at`, eine Rueckgabe in den Eingang setzt sie auf `NULL`.
+- Zuordnung an ein archiviertes Projekt ist erlaubt, wird aber im Ergebnis gekennzeichnet.
+- Zuordnung an eine unbekannte Projekt-ID liefert `404`, Zuordnung an dasselbe Projekt ist idempotent.
+- `promote` ist nicht idempotent und liefert bei einem bereits zugeordneten Eintrag `409`.
+- Die verschachtelten Routen liefern unveraenderte Antworten.
+
+**Tests**
+
+- Integrationstests fuer alle vier Typen: erfassen, zuordnen, zurueck in den Eingang, archivieren
+- Test, dass `promote` Projekt und Eintrag in einer Transaktion erzeugt und bei einem Fehler nichts zurueckbleibt
+- Regressionstest fuer die bestehenden verschachtelten Routen
+
+#### P3.4 - Schnellerfassung (2 Tage)
+
+- `POST /api/inbox` mit `type` von `NOTE`, `IDEA`, `SNIPPET` oder `TODO`, `title`, `content`, optional `tags`, `sourceUrl`, `language`
+- Nur `title` ist verpflichtend; alles andere darf leer bleiben, damit Erfassen nie an einem Pflichtfeld scheitert
+- Frontend: globaler Erfassungsdialog, erreichbar ueber ein Tastenkuerzel und einen dauerhaften Knopf in der Kopfzeile
+- Der Typ ist im Dialog umschaltbar, ohne dass eingegebener Text verloren geht
+- Eine erkannte URL im Inhalt wird als `sourceUrl` vorgeschlagen, aber nicht erzwungen
+- Nach dem Speichern bleibt der Dialog optional offen, um mehrere Gedanken hintereinander zu erfassen
+- Ein fehlgeschlagenes Speichern behaelt die Eingaben vollstaendig
+
+#### P3.5 - Eingangsansicht (2 Tage)
+
+- Route `/inbox` listet alle Eintraege ohne Projekt, typuebergreifend und nach Erfassungszeitpunkt sortiert
+- Filter nach Typ, Tag und Zustand; Umschalter fuer erledigte und archivierte Inhalte
+- Pro Eintrag: bearbeiten, Projekt zuordnen, in ein Projekt umwandeln, archivieren, loeschen
+- Zuordnung ueber eine Projektauswahl mit Suche; zuletzt genutzte Projekte stehen oben
+- Mehrfachauswahl fuer die Zuordnung mehrerer Eintraege an dasselbe Projekt
+- Der leere Zustand erklaert die Schnellerfassung, statt nur "Keine Eintraege" zu zeigen
+- Ein zugeordneter Eintrag verschwindet sichtbar aus dem Eingang und ist ueber eine Rueckmeldung sofort wieder erreichbar
+
+#### P3.6 - Zentrale Ideen- und Notizansichten (2 Tage)
+
+- Die Routen `/notes` und `/ideas` zeigen projektbezogene und projektunabhaengige Eintraege gemeinsam
+- Spalte oder Kennzeichnung fuer das zugehoerige Projekt beziehungsweise "Eingang"
+- Filter nach Projekt, Tag, Zustand und Zeitraum; Sortierung nach Aktualisierung, Erstellung und Titel
+- Archivierte und erledigte Inhalte sind standardmaessig ausgeblendet und ueber genau einen sichtbaren Umschalter einblendbar
+- Die Zaehler in den Ansichten beziehen sich immer auf den aktiven Filter, nicht auf den Gesamtbestand
+
+#### P3.7 - Abschluss Phase 3 (1-2 Tage)
+
+- Der Projektarbeitsbereich verliert die Sonderbehandlung fuer Systembereiche vollstaendig
+- Responsive Pruefung fuer Eingang, zentrale Ansichten und Erfassungsdialog
+- Frontend-Tests fuer Erfassung, Zuordnung, Umwandlung und Zustandsfilter
+- Backend-Gesamttest, Lint und Produktions-Build als Release-Gate
+
+**Abnahme Phase 3**
+
+1. Ein Gedanke laesst sich in hoechstens zwei Interaktionen erfassen, ohne vorher ein Projekt zu waehlen.
+2. Ein Eingangs-Eintrag laesst sich einem Projekt zuordnen, wieder loesen und in ein neues Projekt umwandeln, ohne dass Inhalt oder Tags verloren gehen.
+3. Die frueheren Systembereiche existieren nicht mehr, ihre Inhalte sind vollstaendig im Eingang vorhanden.
+4. Zentrale Ideen- und Notizansichten zeigen projektbezogene und projektunabhaengige Eintraege zusammen und lassen erledigte sowie archivierte Inhalte gezielt aus.
+5. Jede Ansicht hat eine eigene URL, die nach einem Neuladen denselben Zustand herstellt.
+6. Alle Backend-Tests, Frontend-Tests, Lint und Produktions-Build laufen erfolgreich.
+
+### Phase 4: Markdown-Notizen und Suche
+
+#### P4.1 - Markdown-Grundlage (1-2 Tage)
+
+- Eine gemeinsame Komponente rendert Markdown mit `react-markdown`, `remark-gfm`, `rehype-sanitize` und Syntaxhervorhebung fuer Codebloecke
+- Unterstuetzt werden Ueberschriften, Listen, Checkboxen, Links, Tabellen, Zitate und Codebloecke mit Sprache
+- Externe Links oeffnen in einem neuen Tab mit `rel="noreferrer"`; interne Dev-Hub-Links navigieren ohne Neuladen
+- Die vorhandene README-Vorschau aus Phase 2 verwendet ab hier dieselbe Komponente
+- Tests: das sanitisierte Rendern belegt, dass eingebettetes HTML und `javascript:`-Links nicht ausgefuehrt werden
+
+#### P4.2 - Editor mit Vorschau und Speicherstatus (3 Tage)
+
+Der bisherige Notizdialog wird durch eine eigene Editoransicht unter `/notes/:noteId` ersetzt. Der Dialog bleibt nur fuer das schnelle Anlegen bestehen.
+
+- Zweispaltige Ansicht mit umschaltbarer Vorschau; auf schmalen Bildschirmen umschaltbar statt nebeneinander
+- Kleine Werkzeugleiste fuer Ueberschrift, Fett, Liste, Checkbox, Link, Tabelle und Codeblock
+- Automatisches Speichern nach kurzer Eingabepause und zusaetzlich beim Verlassen des Feldes
+- Sichtbarer Speicherstatus mit den Zustaenden "Nicht gespeichert", "Speichert", "Gespeichert um ..." und "Fehler"
+- Ein lokaler Entwurf im Browser sichert den Inhalt gegen Absturz oder Verbindungsverlust und wird beim erneuten Oeffnen zur Wiederherstellung angeboten
+- Verlassen mit ungespeicherten Aenderungen fragt sowohl bei interner Navigation als auch beim Schliessen des Browsers nach
+- Konfliktschutz: der Client sendet das bekannte `updatedAt` mit; ein abweichender Serverstand liefert `409`, und die Oberflaeche bietet Vergleich und Uebernahme an, ohne den eigenen Text zu verwerfen
+
+**Tests**
+
+- Automatisches Speichern loest genau einmal pro Eingabepause aus
+- Ein fehlgeschlagenes Speichern behaelt den Text und zeigt den Fehlerzustand
+- Ein Konflikt verwirft niemals den lokalen Text ohne ausdrueckliche Entscheidung
+
+#### P4.3 - Snippets im Notiz-Workflow (2 Tage)
+
+- Die Aktion "Snippet einfuegen" oeffnet eine Auswahl und fuegt den Code als Codeblock mit Sprache in die Notiz ein
+- Die Aktion "Aus Auswahl ein Snippet erstellen" legt aus einem markierten Codeblock ein Snippet an und verknuepft es
+- Zusaetzlich eine referenzierte Form: ein Platzhalter im Text wird beim Rendern aus dem aktuellen Snippet gefuellt
+- Ein geloeschtes referenziertes Snippet erzeugt einen sichtbaren Hinweis im Rendering, aber keinen Fehler und keinen Textverlust
+- Beide Formen bleiben nebeneinander gueltig: die eingefuegte Kopie ist stabil, die Referenz bleibt aktuell
+
+#### P4.4 - Globale Suche im Backend (2-3 Tage)
+
+- `GET /api/search` mit `q`, `types`, `projectId`, `tags`, `includeArchived`, `includeCompleted`, `limit` und `offset`
+- Durchsucht Projekte inklusive Arbeitskontext, Notizen, Snippets, Ideen und Todos
+- Ergebnis pro Treffer: Typ, ID, Titel, Projektbezug oder Eingang, Zeitstempel, Tags, ein kurzer Textausschnitt um die Fundstelle und die dauerhafte Adresse innerhalb von Dev Hub
+- Rangfolge: Titeltreffer vor Inhaltstreffer, danach neuere Aktualisierung vor aelterer; die Regel ist in einem Test festgeschrieben
+- Ein `SearchRepository`-Interface kapselt die Abfragen; die portable Implementierung nutzt `LOWER(...) LIKE`
+- Leere oder zu kurze Suchbegriffe liefern `400` mit dem bestehenden Fehlerformat
+- Indizes auf den haeufig gefilterten Spalten; ein Test mit mehreren tausend erzeugten Eintraegen belegt eine Antwortzeit im zweistelligen Millisekundenbereich
+
+#### P4.5 - Suche im Frontend (2 Tage)
+
+- Kommandoleiste ueber ein Tastenkuerzel, zusaetzlich die Route `/search` mit Suchbegriff und Filtern in der URL
+- Ergebnisse nach Typ gruppiert, mit Tastaturnavigation und direktem Sprung zum Eintrag
+- Filter fuer Typ, Projekt, Tag sowie erledigte und archivierte Inhalte, kombinierbar
+- Sichtbare Zustaende fuer Laden, kein Ergebnis und Fehler; die Eingabe wird entprellt
+- Der Suchbegriff wird im Ergebnis hervorgehoben
+
+#### P4.6 - Dauerhafte Verknuepfungen zwischen Eintraegen (2 Tage)
+
+Zu unterscheiden von den Routen aus P3.1: hier geht es um inhaltliche Verweise zwischen Eintraegen.
+
+- Tabelle `entity_references` mit Quelltyp, Quell-ID, Zieltyp, Ziel-ID und Erstellungszeitpunkt
+- Aktion "Mit Eintrag verknuepfen" mit Suche ueber alle Typen
+- Verknuepfungen werden beim Zielobjekt als Rueckverweise angezeigt
+- Aktion "Dauerhaften Link kopieren" an jedem Eintrag
+- Ein geloeschtes Ziel entfernt die Verknuepfung, ohne den Quelltext zu veraendern
+- Verknuepfungen ueberstehen Zuordnung, Umwandlung in ein Projekt und Archivierung unveraendert
+
+#### P4.7 - Abschluss Phase 4 (1-2 Tage)
+
+- Responsive Pruefung fuer Editor, Vorschau, Kommandoleiste und Suchergebnisse
+- Frontend-Tests fuer Speicherstatus, Entwurfswiederherstellung, Snippet-Einfuegen und Suchfilter
+- Backend-Gesamttest, Lint und Produktions-Build als Release-Gate
+- Kurze Dokumentation der Suchgrenzen und des vorgesehenen Wechsels auf `tsvector`
+
+**Abnahme Phase 4**
+
+1. Eine Notiz mit Ueberschriften, Listen, Checkboxen, Tabelle und hervorgehobenem Codeblock laesst sich schreiben und korrekt anzeigen.
+2. Der Speicherzustand ist jederzeit sichtbar; ein Verbindungsverlust oder ein versehentliches Verlassen fuehrt zu keinem Inhaltsverlust.
+3. Ein Snippet laesst sich als Codeblock einfuegen und alternativ als lebende Referenz einbinden.
+4. Ein Begriff aus einer Notiz, Idee, einem Todo, einem Snippet oder einem Projektkontext wird ueber die globale Suche in wenigen Sekunden wiedergefunden.
+5. Jeder Eintrag hat eine dauerhafte Adresse, und Verweise zwischen Eintraegen sind in beide Richtungen sichtbar.
+6. Alle Backend-Tests, Frontend-Tests, Lint und Produktions-Build laufen erfolgreich.
+
+### Meilensteine und Aufwand
+
+1. `M5 Fundament`: P3.0 bis P3.2; Testinfrastruktur, Routing und Datenmodell stehen
+2. `M6 Nutzbarer Eingang`: P3.3 bis P3.7; Phase 3 im Alltag testen
+3. `M7 Schreiben`: P4.1 bis P4.3; Notizen werden zum eigentlichen Arbeitsmittel
+4. `M8 Wiederfinden`: P4.4 bis P4.7; Dev Hub ist ein durchsuchbarer Wissensspeicher
+
+Bei einer einzelnen entwickelnden Person sind fuer Phase 3 etwa 12-14 und fuer Phase 4 etwa 13-16 konzentrierte Entwicklungstage realistisch.
+
+**Groesste Unsicherheiten**
+
+- Der Routing-Umbau beruehrt praktisch den gesamten Frontend-Zustand in `App.tsx`.
+- Die Migration auf ein nullable `project_id` beruehrt alle Inhaltstypen gleichzeitig und muss auf befuellten Daten geprueft werden, bevor sie produktiv laeuft.
+- Automatisches Speichern mit Konfliktschutz ist erfahrungsgemaess aufwendiger als der Editor selbst.
+- Die portable Suche ist bewusst einfach; wenn sie sich im Alltag als zu ungenau erweist, faellt der Wechsel auf `tsvector` frueher an als geplant.
+
 ## Bewusst nicht im ersten Umfang
 
 - Team-, Rollen- und Organisationsverwaltung

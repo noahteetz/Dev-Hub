@@ -24,6 +24,9 @@ public record RepositoryMetadata(
 		String errorMessage,
 		String branchesUrl,
 		String issuesUrl,
-		String pullRequestsUrl
+		String pullRequestsUrl,
+		/** Sent back to the provider so an unchanged repository costs no quota. */
+		String etag,
+		RepositoryRateLimit rateLimit
 ) {
 	}

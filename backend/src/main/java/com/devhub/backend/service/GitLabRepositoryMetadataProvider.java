@@ -1,14 +1,27 @@
 package com.devhub.backend.service;
 
+import static com.devhub.backend.service.ProviderSupport.bool;
+import static com.devhub.backend.service.ProviderSupport.decodeBase64;
+import static com.devhub.backend.service.ProviderSupport.headerValue;
+import static com.devhub.backend.service.ProviderSupport.instant;
+import static com.devhub.backend.service.ProviderSupport.percentages;
+import static com.devhub.backend.service.ProviderSupport.rateLimit;
+import static com.devhub.backend.service.ProviderSupport.text;
+
+import com.devhub.backend.model.RemoteRepository;
+import com.devhub.backend.model.RepositoryAccount;
+import com.devhub.backend.model.RepositoryCredential;
+import com.devhub.backend.model.RepositoryFetch;
 import com.devhub.backend.model.RepositoryProvider;
+import com.devhub.backend.model.RepositoryRateLimit;
 import com.devhub.backend.model.RepositoryReference;
 import com.devhub.backend.model.RepositorySnapshot;
 import tools.jackson.databind.JsonNode;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -16,14 +29,23 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class GitLabRepositoryMetadataProvider implements RepositoryMetadataProvider {
 
-	private final RestClient restClient;
+	private static final String TOKEN_HEADER = "PRIVATE-TOKEN";
+	private static final int PAGE_SIZE = 100;
+	private static final int MAX_PAGES = 10;
 
-	public GitLabRepositoryMetadataProvider(RepositoryHttpClientFactory httpClientFactory) {
+	private final RestClient restClient;
+	private final String host;
+
+	public GitLabRepositoryMetadataProvider(
+			RepositoryHttpClientFactory httpClientFactory,
+			@Value("${devhub.repository.gitlab.base-url:https://gitlab.com/api/v4}") String baseUrl
+	) {
 		this.restClient = httpClientFactory.builder()
-				.baseUrl("https://gitlab.com/api/v4")
+				.baseUrl(baseUrl)
 				.defaultHeader("Accept", "application/json")
 				.defaultHeader("User-Agent", "Dev-Hub")
 				.build();
+		this.host = ProviderSupport.displayHost(baseUrl, "gitlab.com");
 	}
 
 	@Override
@@ -32,16 +54,39 @@ public class GitLabRepositoryMetadataProvider implements RepositoryMetadataProvi
 	}
 
 	@Override
-	public RepositorySnapshot fetch(RepositoryReference reference) {
-		String projectId = encode(reference.owner() + "/" + reference.repositoryName());
-		JsonNode project = get("/projects/" + projectId);
+	public String host() {
+		return host;
+	}
+
+	@Override
+	public RepositoryFetch fetch(RepositoryReference reference, RepositoryCredential credential, String etag) {
+		String projectId = reference.owner() + "/" + reference.repositoryName();
+		ResponseEntity<JsonNode> response = exchange(credential, etag, "/projects/{projectId}", projectId);
+		RepositoryRateLimit rateLimit = rateLimit(response.getHeaders());
+		boolean conditional = etag != null && !etag.isBlank();
+		if (conditional && response.getStatusCode().value() == 304) {
+			return RepositoryFetch.notModified(etag, rateLimit);
+		}
+
+		JsonNode project = response.getBody();
+		if (project == null && conditional) {
+			response = exchange(credential, null, "/projects/{projectId}", projectId);
+			rateLimit = rateLimit(response.getHeaders());
+			project = response.getBody();
+		}
+
 		String branch = text(project, "default_branch", "main");
-		JsonNode commits = get("/projects/" + projectId + "/repository/commits?ref_name=" + encode(branch) + "&per_page=1");
+		JsonNode commits = get(
+				credential,
+				"/projects/{projectId}/repository/commits?ref_name={branch}&per_page=1",
+				projectId,
+				branch
+		);
 		JsonNode commit = commits != null && commits.isArray() && !commits.isEmpty() ? commits.get(0) : null;
-		JsonNode languages = get("/projects/" + projectId + "/languages");
-		JsonNode readme = readme(projectId, branch);
+		JsonNode languages = get(credential, "/projects/{projectId}/languages", projectId);
+		JsonNode readme = readme(projectId, branch, credential);
 		String webUrl = text(project, "web_url", reference.canonicalUrl());
-		return new RepositorySnapshot(
+		RepositorySnapshot snapshot = new RepositorySnapshot(
 				branch,
 				text(commit, "id", ""),
 				text(commit, "title", ""),
@@ -54,11 +99,86 @@ public class GitLabRepositoryMetadataProvider implements RepositoryMetadataProvi
 				webUrl + "/-/issues",
 				webUrl + "/-/merge_requests"
 		);
+		return RepositoryFetch.of(headerValue(response.getHeaders(), HttpHeaders.ETAG), snapshot, rateLimit);
 	}
 
-	private JsonNode readme(String projectId, String branch) {
+	@Override
+	public RepositoryAccount verify(RepositoryCredential credential) {
+		JsonNode user = get(credential, "/user");
+		return new RepositoryAccount(text(user, "username", ""), scopes(credential));
+	}
+
+	@Override
+	public List<RemoteRepository> listRepositories(RepositoryCredential credential) {
+		List<RemoteRepository> repositories = new ArrayList<>();
+		for (int page = 1; page <= MAX_PAGES; page++) {
+			JsonNode body = get(
+					credential,
+					"/projects?membership=true&min_access_level=20&order_by=last_activity_at&per_page={size}&page={page}",
+					PAGE_SIZE,
+					page
+			);
+			if (body == null || !body.isArray() || body.isEmpty()) {
+				break;
+			}
+			for (JsonNode entry : body) {
+				repositories.add(toRemoteRepository(entry));
+			}
+			if (body.size() < PAGE_SIZE) {
+				break;
+			}
+		}
+		return List.copyOf(repositories);
+	}
+
+	/** Token scopes come from a separate endpoint that older tokens may not reach. */
+	private List<String> scopes(RepositoryCredential credential) {
 		try {
-			return get("/projects/" + projectId + "/repository/files/README.md?ref=" + encode(branch));
+			JsonNode token = get(credential, "/personal_access_tokens/self");
+			JsonNode scopes = ProviderSupport.child(token, "scopes");
+			if (scopes == null || !scopes.isArray()) {
+				return List.of();
+			}
+			List<String> values = new ArrayList<>();
+			for (JsonNode scope : scopes) {
+				values.add(scope.asText(""));
+			}
+			return List.copyOf(values);
+		} catch (RestClientResponseException exception) {
+			return List.of();
+		}
+	}
+
+	private static RemoteRepository toRemoteRepository(JsonNode entry) {
+		String fullName = text(entry, "path_with_namespace", "");
+		int separator = fullName.lastIndexOf('/');
+		String owner = separator > 0
+				? fullName.substring(0, separator)
+				: text(ProviderSupport.child(entry, "namespace"), "full_path", "");
+		String name = separator > 0 ? fullName.substring(separator + 1) : text(entry, "path", "");
+		return new RemoteRepository(
+				RepositoryProvider.GITLAB,
+				owner,
+				name,
+				fullName,
+				text(entry, "description", ""),
+				!"public".equals(text(entry, "visibility", "private")),
+				bool(entry, "archived"),
+				text(entry, "default_branch", ""),
+				instant(entry, "last_activity_at"),
+				"",
+				text(entry, "web_url", "")
+		);
+	}
+
+	private JsonNode readme(String projectId, String branch, RepositoryCredential credential) {
+		try {
+			return get(
+					credential,
+					"/projects/{projectId}/repository/files/README.md?ref={branch}",
+					projectId,
+					branch
+			);
 		} catch (RestClientResponseException exception) {
 			if (exception.getStatusCode().value() == 404) {
 				return null;
@@ -67,46 +187,35 @@ public class GitLabRepositoryMetadataProvider implements RepositoryMetadataProvi
 		}
 	}
 
-	private JsonNode get(String path) {
-		return restClient.get().uri(path).retrieve().body(JsonNode.class);
+	private JsonNode get(RepositoryCredential credential, String path, Object... uriVariables) {
+		return restClient.get()
+				.uri(path, uriVariables)
+				.headers(headers -> authorize(headers, credential))
+				.retrieve()
+				.body(JsonNode.class);
 	}
 
-	private static String encode(String value) {
-		return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+	private ResponseEntity<JsonNode> exchange(
+			RepositoryCredential credential,
+			String etag,
+			String path,
+			Object... uriVariables
+	) {
+		return restClient.get()
+				.uri(path, uriVariables)
+				.headers(headers -> {
+					authorize(headers, credential);
+					if (etag != null && !etag.isBlank()) {
+						headers.setIfNoneMatch(etag);
+					}
+				})
+				.retrieve()
+				.toEntity(JsonNode.class);
 	}
 
-	private static String text(JsonNode node, String field, String fallback) {
-		JsonNode value = node == null ? null : node.get(field);
-		return value == null || value.isNull() ? fallback : value.asText(fallback);
-	}
-
-	private static Instant instant(JsonNode node, String field) {
-		String value = text(node, field, "");
-		return value.isBlank() ? null : Instant.parse(value);
-	}
-
-	private static String decodeBase64(String value) {
-		if (value.isBlank()) {
-			return "";
+	private static void authorize(HttpHeaders headers, RepositoryCredential credential) {
+		if (credential != null && credential.hasToken()) {
+			headers.set(TOKEN_HEADER, credential.token());
 		}
-		return new String(java.util.Base64.getDecoder().decode(value.replaceAll("\\s", "")), StandardCharsets.UTF_8).trim();
-	}
-
-	private static Map<String, Double> percentages(JsonNode node) {
-		Map<String, Double> result = new LinkedHashMap<>();
-		if (node == null || !node.isObject()) {
-			return result;
-		}
-		double total = 0;
-		for (JsonNode value : node) {
-			total += value.asDouble();
-		}
-		if (total == 0) {
-			return result;
-		}
-		for (Map.Entry<String, JsonNode> entry : node.properties()) {
-			result.put(entry.getKey(), Math.round(entry.getValue().asDouble() * 1000.0 / total) / 10.0);
-		}
-		return result;
 	}
 }

@@ -226,8 +226,8 @@ export function ProjectDashboard({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [sortOrder, setSortOrder] = useState<SortOrder>('activity')
   const [favoritesOnly, setFavoritesOnly] = useState(false)
-  const projects = view === 'active' ? activeProjects.filter((project) => !project.system) : archivedProjects.filter((project) => !project.system)
-  const activeRegularProjects = activeProjects.filter((project) => !project.system)
+  const projects = view === 'active' ? activeProjects : archivedProjects
+  const activeRegularProjects = activeProjects
 
   const displayedProjects = useMemo(() => {
     const filtered = projects.filter((project) => {

@@ -7,7 +7,6 @@ public record Project(
 		Long id,
 		String name,
 		String description,
-		boolean system,
 		ProjectStatus status,
 		int priority,
 		boolean favorite,
