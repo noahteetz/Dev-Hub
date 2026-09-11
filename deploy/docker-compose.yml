@@ -1,0 +1,101 @@
+# Dev Hub production stack — runs under the `noahteetz` user on the server.
+# Lives at /home/noahteetz/dev-hub/docker-compose.yml
+#
+# No host ports are published: the server-wide Traefik (in /opt/proxy) reaches
+# these containers over the shared external `edge` network and terminates TLS.
+# The images are pulled from GHCR, built and pushed by the GitHub Actions
+# workflow. Postgres stays on an internal-only network with no route out.
+name: dev-hub
+
+networks:
+  edge:
+    external: true
+  private:
+    internal: true
+
+volumes:
+  postgres-data:
+
+services:
+  backend:
+    image: ghcr.io/noahteetz/dev-hub/backend:latest
+    container_name: dev-hub-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-devhub}
+      DATABASE_USERNAME: ${POSTGRES_USER:-devhub}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # Encrypts the stored GitHub and GitLab tokens. Losing it makes every
+      # stored token unreadable, so it belongs in the database backup notes.
+      DEVHUB_ENCRYPTION_KEY: ${DEVHUB_ENCRYPTION_KEY:?Set DEVHUB_ENCRYPTION_KEY in .env}
+
+      # Keycloak. Never turn this off here — it is the only thing between the
+      # internet and every note, snippet and Git token in the database.
+      DEVHUB_AUTH_ENABLED: "true"
+      # The public realm URL, exactly as it appears in the `iss` claim.
+      DEVHUB_AUTH_ISSUER_URI: https://auth.teammegabyte.net/realms/dev-hub
+      # Signing keys are fetched container to container, so a Keycloak restart
+      # or a proxy hiccup cannot lock the API out of validating tokens.
+      DEVHUB_AUTH_JWK_SET_URI: http://keycloak:8080/realms/dev-hub/protocol/openid-connect/certs
+      DEVHUB_AUTH_CLIENT_ID: dev-hub-frontend
+      # A token minted for another application in the same realm is refused.
+      DEVHUB_AUTH_AUDIENCE: dev-hub-backend
+      # And so is a token from an account without this realm role.
+      DEVHUB_AUTH_REQUIRED_ROLE: devhub-user
+    networks:
+      - edge
+      - private
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=edge"
+      # /api/* goes to the backend, ahead of the catch-all SPA router.
+      - "traefik.http.routers.dev-hub-backend.rule=Host(`dev-hub.noahteetz.de`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.dev-hub-backend.entrypoints=websecure"
+      - "traefik.http.routers.dev-hub-backend.tls.certresolver=myresolver"
+      - "traefik.http.routers.dev-hub-backend.priority=100"
+      - "traefik.http.services.dev-hub-backend.loadbalancer.server.port=8080"
+
+  frontend:
+    image: ghcr.io/noahteetz/dev-hub/frontend:latest
+    container_name: dev-hub-frontend
+    restart: unless-stopped
+    networks:
+      - edge
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=edge"
+      # Everything else on the host is the static single page app.
+      - "traefik.http.routers.dev-hub-frontend.rule=Host(`dev-hub.noahteetz.de`)"
+      - "traefik.http.routers.dev-hub-frontend.entrypoints=websecure"
+      - "traefik.http.routers.dev-hub-frontend.tls.certresolver=myresolver"
+      - "traefik.http.services.dev-hub-frontend.loadbalancer.server.port=80"
+
+  database:
+    image: postgres:18-alpine
+    container_name: dev-hub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-devhub}
+      POSTGRES_USER: ${POSTGRES_USER:-devhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

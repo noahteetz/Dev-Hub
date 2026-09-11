@@ -1,0 +1,92 @@
+{
+  "realm": "dev-hub",
+  "displayName": "Dev Hub",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 10,
+  "waitIncrementSeconds": 60,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "roles": {
+    "realm": [
+      {
+        "name": "devhub-user",
+        "description": "May use Dev Hub. Without this role the API answers 403."
+      },
+      {
+        "name": "devhub-admin",
+        "description": "Reserved for future administrative screens; grants nothing extra today."
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "dev-hub-frontend",
+      "name": "Dev Hub (Browser)",
+      "description": "The single page app. Public client, authorization code flow with PKCE.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "fullScopeAllowed": true,
+      "rootUrl": "https://dev-hub.noahteetz.de",
+      "baseUrl": "/",
+      "redirectUris": [
+        "https://dev-hub.noahteetz.de/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "https://dev-hub.noahteetz.de",
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://dev-hub.noahteetz.de/*##http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "dev-hub-backend-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "dev-hub-backend",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "dev-hub-backend",
+      "name": "Dev Hub (API)",
+      "description": "The Spring Boot API. Exists so tokens can name it as their audience; it starts no login of its own.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": []
+    }
+  ]
+}
