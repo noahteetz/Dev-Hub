@@ -1,79 +1,66 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createTheme, CssBaseline, ThemeProvider } from '@mui/material'
-import { BrowserRouter } from 'react-router-dom'
+import { AuthProvider } from 'react-oidc-context'
 import './index.css'
-import App from './App.tsx'
+import { configureAuth } from './api'
+import { DevHub, Shell, StartupError } from './AppRoot'
+import { AuthGate } from './auth/AuthGate'
+import { fetchAuthSettings } from './auth/authSettings'
+import { cleanUpRedirect, createUserManager, currentAccessToken } from './auth/userManager'
+import { rememberReturnPath } from './auth/returnPath'
 
-const theme = createTheme({
-  palette: {
-    background: {
-      default: '#f7f8fc',
-      paper: '#ffffff',
-    },
-    primary: {
-      dark: '#4147b9',
-      light: '#7d83f2',
-      main: '#5b61e8',
-    },
-    text: {
-      primary: '#1d2433',
-      secondary: '#697386',
-    },
-  },
-  shape: {
-    borderRadius: 8,
-  },
-  typography: {
-    fontFamily: '"Inter", "Segoe UI", Roboto, Arial, sans-serif',
-    button: {
-      fontWeight: 700,
-      textTransform: 'none',
-    },
-  },
-  components: {
-    MuiButton: {
-      defaultProps: {
-        disableElevation: true,
-      },
-      styleOverrides: {
-        root: {
-          transition:
-            'background-color 160ms ease, box-shadow 160ms ease, color 160ms ease, transform 160ms ease',
-          '&:hover': {
-            transform: 'translateY(-1px)',
-          },
-          '&:active': {
-            transform: 'translateY(0)',
-          },
-        },
-      },
-    },
-    MuiIconButton: {
-      styleOverrides: {
-        root: {
-          transition: 'background-color 160ms ease, color 160ms ease, transform 160ms ease',
-          '&:hover': {
-            transform: 'scale(1.04)',
-          },
-        },
-      },
-    },
-    MuiPaper: {
-      defaultProps: {
-        elevation: 0,
-      },
-    },
-  },
-})
+const root = createRoot(document.getElementById('root')!)
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <BrowserRouter>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <App />
-      </ThemeProvider>
-    </BrowserRouter>
-  </StrictMode>,
-)
+/**
+ * The app asks the backend whether a login is required before it renders
+ * anything. A backend that cannot be reached stops the start up instead of
+ * quietly loading an app whose every request would fail.
+ */
+async function start() {
+  let settings
+
+  try {
+    settings = await fetchAuthSettings()
+  } catch (error) {
+    root.render(
+      <Shell>
+        <StartupError message={error instanceof Error ? error.message : 'Dev Hub could not reach its server.'} />
+      </Shell>,
+    )
+    return
+  }
+
+  if (!settings.enabled) {
+    root.render(
+      <Shell>
+        <DevHub />
+      </Shell>,
+    )
+    return
+  }
+
+  const userManager = createUserManager(settings)
+  let signingIn = false
+
+  configureAuth({
+    accessToken: () => currentAccessToken(userManager),
+    onSessionExpired: () => {
+      // One redirect per expiry — a failed renewal must not turn into a loop.
+      if (signingIn) return
+      signingIn = true
+      rememberReturnPath()
+      void userManager.signinRedirect()
+    },
+  })
+
+  root.render(
+    <Shell>
+      <AuthProvider userManager={userManager} onSigninCallback={cleanUpRedirect}>
+        <AuthGate>
+          <DevHub />
+        </AuthGate>
+      </AuthProvider>
+    </Shell>,
+  )
+}
+
+void start()

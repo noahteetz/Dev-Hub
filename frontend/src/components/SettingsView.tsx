@@ -23,6 +23,7 @@ import {
 } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { AccountPanel } from '../auth/AccountPanel'
 import { RepositoryPickerDialog } from './RepositoryPickerDialog'
 import { formatDate } from '../utils/formatDate'
 import type { GitCredential, GitCredentialStatus, RepositoryProvider } from '../types'
@@ -143,6 +144,8 @@ export function SettingsView({ onProjectsChanged }: SettingsViewProps) {
 
   return (
     <Box component="main" sx={{ maxWidth: 760, mx: 'auto', px: { xs: 2, sm: 3 }, py: { xs: 3, sm: 5 }, width: '100%' }}>
+      <AccountPanel />
+
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
         <Typography component="h1" sx={{ fontWeight: 800 }} variant="h5">
           Git access

@@ -23,6 +23,14 @@ services:
       DATABASE_USERNAME: ${POSTGRES_USER:-devhub}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-devhub}
       DEVHUB_ENCRYPTION_KEY: ${DEVHUB_ENCRYPTION_KEY:-}
+      # Local runs default to no login so the stack comes up without a Keycloak.
+      # This file is for development only — the deployed stack in deploy/ keeps
+      # the login on, and nothing here should ever be copied onto a server.
+      DEVHUB_AUTH_ENABLED: ${DEVHUB_AUTH_ENABLED:-false}
+      DEVHUB_AUTH_ISSUER_URI: ${DEVHUB_AUTH_ISSUER_URI:-}
+      DEVHUB_AUTH_CLIENT_ID: ${DEVHUB_AUTH_CLIENT_ID:-dev-hub-frontend}
+      DEVHUB_AUTH_AUDIENCE: ${DEVHUB_AUTH_AUDIENCE:-dev-hub-backend}
+      DEVHUB_AUTH_REQUIRED_ROLE: ${DEVHUB_AUTH_REQUIRED_ROLE:-devhub-user}
     ports:
       - "8080:8080"
     depends_on:

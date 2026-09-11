@@ -21,6 +21,39 @@ The frontend is available at `http://localhost:5173` and proxies `/api` requests
 
 Override the local database credentials by creating a `.env` file from `.env.example` before starting Docker.
 
+## Signing in
+
+The deployed app is behind Keycloak. The browser performs an authorization code
+login with PKCE against the `dev-hub` realm and sends the resulting access token
+with every API call; the backend validates the signature, the issuer, the
+audience and the realm role `devhub-user` before it answers. There is no session
+on the server and no cookie to steal.
+
+The frontend image carries no realm settings. It asks the backend for them at
+`/api/auth/config`, the only endpoint besides the health probe that answers
+without a token, so the same image works in every environment.
+
+| Variable | Meaning |
+| --- | --- |
+| `DEVHUB_AUTH_ENABLED` | `false` opens the API completely. Local development only |
+| `DEVHUB_AUTH_ISSUER_URI` | Public realm URL, exactly as it appears in the token's `iss` |
+| `DEVHUB_AUTH_JWK_SET_URI` | Where the signing keys are fetched, container to container in production |
+| `DEVHUB_AUTH_CLIENT_ID` | The public client the browser logs in with |
+| `DEVHUB_AUTH_AUDIENCE` | Required `aud` entry. Empty turns the check off |
+| `DEVHUB_AUTH_REQUIRED_ROLE` | Realm role a token must carry. Empty admits any account in the realm |
+
+Local development runs with `DEVHUB_AUTH_ENABLED=false`, so `npm run dev` needs
+no identity provider. Set it to `true` and fill in the realm to exercise the
+real login; the `dev-hub-frontend` client already allows `http://localhost:5173`.
+
+Dev Hub stores no owner per record. Every account in the realm that holds
+`devhub-user` sees the same data.
+
+## Deployment
+
+Production setup, the Keycloak realm to import, and the server steps are in
+[deploy/README.md](deploy/README.md).
+
 ## Private repositories
 
 Dev Hub reads public repositories without any setup. To reach private repositories and the ones in your

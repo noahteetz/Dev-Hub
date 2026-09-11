@@ -47,6 +47,25 @@ export class ConflictError extends Error {
   }
 }
 
+/** Hands back the access token for the next call, or null while nobody is logged in. */
+type AccessTokenProvider = () => Promise<string | null>
+
+let accessToken: AccessTokenProvider | null = null
+let sessionExpired: (() => void) | null = null
+
+/**
+ * Wires the API client into the login. Called once at start up; without it every
+ * request goes out unauthenticated, which is what a deployment with the login
+ * turned off expects.
+ */
+export function configureAuth(options: {
+  accessToken: AccessTokenProvider
+  onSessionExpired: () => void
+}) {
+  accessToken = options.accessToken
+  sessionExpired = options.onSessionExpired
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
 
@@ -54,11 +73,27 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json')
   }
 
+  if (accessToken) {
+    const token = await accessToken()
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+  }
+
   const response = await fetch(path, {
     ...options,
     headers,
   })
   const body = await response.text()
+
+  if (response.status === 401) {
+    sessionExpired?.()
+    throw new Error('Your session has expired. Please sign in again.')
+  }
+
+  if (response.status === 403) {
+    throw new Error('Your account is not allowed to use Dev Hub. Ask for the devhub-user role in Keycloak.')
+  }
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`
