@@ -67,11 +67,14 @@ application handed out — would open Dev Hub.
 ```bash
 ssh noahteetz@<server>
 mkdir -p ~/dev-hub
-# copy deploy/docker-compose.yml to ~/dev-hub/docker-compose.yml
 # copy deploy/.env.example to ~/dev-hub/.env and fill it in
 chmod 600 ~/dev-hub/.env
-docker compose -f ~/dev-hub/docker-compose.yml up -d
 ```
+
+`docker-compose.yml` is not copied by hand. Every deploy sends the file from
+this repository to the server first, so the two cannot drift apart. Change the
+stack by editing `deploy/docker-compose.yml` and pushing, never by editing the
+copy on the server.
 
 The `.env` needs two generated values:
 

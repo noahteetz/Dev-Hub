@@ -86,6 +86,21 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      # The stack file is part of this repository, so it is copied out on every
+      # deploy. Editing it on the server instead lets the two drift apart, and a
+      # change here would then silently never take effect.
+      - name: Copy the stack file to the server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: deploy/docker-compose.yml
+          target: /home/noahteetz/dev-hub
+          strip_components: 1
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
         with:
