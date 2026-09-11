@@ -7,7 +7,7 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
-import 'highlight.js/styles/github.css'
+import { surface } from '../theme'
 import type { ContentEntry } from '../types'
 
 /** Matches a live snippet reference such as {{snippet:12}}. */
@@ -91,7 +91,7 @@ export function MarkdownView({ content, snippets, sx }: MarkdownViewProps) {
           py: 0.2,
         },
         '& pre': {
-          bgcolor: '#f6f8fa',
+          bgcolor: (theme) => surface(theme, 'code'),
           borderRadius: 1,
           overflowX: 'auto',
           p: 1.75,

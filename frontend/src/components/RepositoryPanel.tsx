@@ -16,6 +16,7 @@ import {
 } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import type { Project, RepositoryConnection, RepositoryProvider, RepositorySyncStatus } from '../types'
+import { shadow, tint } from '../theme'
 import { formatDate } from '../utils/formatDate'
 import { MarkdownView } from './MarkdownView'
 
@@ -78,11 +79,11 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
   return (
     <Box
       component="section"
-      sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)', mt: 2.5, p: { xs: 2, sm: 2.5 } }}
+      sx={(theme) => ({ bgcolor: 'background.paper', borderRadius: 1, boxShadow: shadow(theme, 'flat'), mt: 2.5, p: { xs: 2, sm: 2.5 } })}
     >
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between' }}>
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 0 }}>
-          <Box sx={{ alignItems: 'center', bgcolor: 'rgba(91, 97, 232, 0.08)', borderRadius: 1, color: 'primary.main', display: 'flex', height: 36, justifyContent: 'center', width: 36 }}>
+          <Box sx={(theme) => ({ alignItems: 'center', bgcolor: tint(theme, 0.08), borderRadius: 1, color: 'primary.main', display: 'flex', height: 36, justifyContent: 'center', width: 36 })}>
             {repository?.provider === 'GITHUB' ? <GitHubIcon fontSize="small" /> : <AccountTreeOutlinedIcon fontSize="small" />}
           </Box>
           <Box sx={{ minWidth: 0 }}>

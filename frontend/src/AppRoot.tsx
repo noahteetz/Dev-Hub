@@ -1,18 +1,15 @@
 import { StrictMode, type ReactNode } from 'react'
-import { Alert, Box, CssBaseline, Paper, ThemeProvider } from '@mui/material'
+import { Alert, Box, Paper } from '@mui/material'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
-import { theme } from './theme'
+import { ColorModeProvider } from './ColorModeProvider'
 import { RestoreReturnPath } from './auth/RestoreReturnPath'
 
 /** Everything the app needs around it, whether or not a login sits in front. */
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <StrictMode>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        {children}
-      </ThemeProvider>
+      <ColorModeProvider>{children}</ColorModeProvider>
     </StrictMode>
   )
 }

@@ -11,6 +11,7 @@ import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded'
 import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded'
 import {
+  alpha,
   Box,
   Button,
   Card,
@@ -32,6 +33,7 @@ import {
 } from '@mui/material'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { shadow, snippetSurface, surface, tint, tintShadow } from '../theme'
 import type { CodeSnippet, Idea, Note, Project, RepositoryConnection, Todo } from '../types'
 import { formatDate } from '../utils/formatDate'
 import { EmptyState } from './EmptyState'
@@ -85,30 +87,30 @@ function Metric({
 }) {
   return (
     <Box
-      sx={{
-        bgcolor: 'rgba(255, 255, 255, 0.72)',
+      sx={(theme) => ({
+        bgcolor: surface(theme, 'glass'),
         borderRadius: 1,
         p: 2,
         transition: 'background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
         '&:hover': {
           bgcolor: 'background.paper',
-          boxShadow: '0 12px 28px rgba(30, 42, 80, 0.08)',
+          boxShadow: shadow(theme, 'raised'),
           transform: 'translateY(-2px)',
         },
-      }}
+      })}
     >
       <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
         <Box
-          sx={{
+          sx={(theme) => ({
             alignItems: 'center',
-            bgcolor: 'rgba(91, 97, 232, 0.08)',
+            bgcolor: tint(theme, 0.08),
             borderRadius: 1,
             color: 'primary.main',
             display: 'flex',
             height: 34,
             justifyContent: 'center',
             width: 34,
-          }}
+          })}
         >
           {icon}
         </Box>
@@ -136,7 +138,7 @@ function ContextPanel({ project, onEdit }: { project: Project; onEdit: () => voi
   ]
 
   return (
-    <Box component="section" sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)', mt: 2.5, p: { xs: 2, sm: 2.5 } }}>
+    <Box component="section" sx={(theme) => ({ bgcolor: 'background.paper', borderRadius: 1, boxShadow: shadow(theme, 'flat'), mt: 2.5, p: { xs: 2, sm: 2.5 } })}>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between' }}>
         <Box>
           <Typography sx={{ fontWeight: 800 }}>Resume here</Typography>
@@ -146,7 +148,7 @@ function ContextPanel({ project, onEdit }: { project: Project; onEdit: () => voi
       </Stack>
       <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, mt: 2.5 }}>
         {entries.map((entry) => (
-          <Box key={entry.label} sx={{ bgcolor: 'rgba(247, 248, 252, 0.82)', borderRadius: 1, gridColumn: { md: entry.wide ? 'span 2' : 'span 1' }, p: 1.5 }}>
+          <Box key={entry.label} sx={(theme) => ({ bgcolor: surface(theme, 'inset'), borderRadius: 1, gridColumn: { md: entry.wide ? 'span 2' : 'span 1' }, p: 1.5 })}>
             <Typography color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 0.45, textTransform: 'uppercase' }} variant="caption">
               {entry.label}
             </Typography>
@@ -172,16 +174,16 @@ function NoteCard({
   return (
     <Card
       elevation={0}
-      sx={{
+      sx={(theme) => ({
         bgcolor: 'background.paper',
         borderRadius: 1,
-        boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)',
+        boxShadow: shadow(theme, 'flat'),
         transition: 'box-shadow 160ms ease, transform 160ms ease',
         '&:hover': {
-          boxShadow: '0 12px 28px rgba(30, 42, 80, 0.09)',
+          boxShadow: shadow(theme, 'raised'),
           transform: 'translateY(-2px)',
         },
-      }}
+      })}
     >
       <CardContent sx={{ p: 2.25, '&:last-child': { pb: 2.25 } }}>
         <Stack
@@ -220,13 +222,13 @@ function NoteCard({
                   aria-label={`Delete ${note.title}`}
                   color="error"
                   size="small"
-                  sx={{
+                  sx={(theme) => ({
                     transition: 'background-color 160ms ease, transform 160ms ease',
                     '&:hover': {
-                      bgcolor: 'rgba(211, 47, 47, 0.08)',
+                      bgcolor: alpha(theme.palette.error.main, 0.08),
                       transform: 'scale(1.08)',
                     },
-                  }}
+                  })}
                   onClick={onDelete}
                 >
                   <DeleteOutlineRoundedIcon fontSize="small" />
@@ -254,17 +256,17 @@ function SnippetCard({
   return (
     <Card
       elevation={0}
-      sx={{
+      sx={(theme) => ({
         bgcolor: 'background.paper',
         borderRadius: 1,
-        boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)',
+        boxShadow: shadow(theme, 'flat'),
         overflow: 'hidden',
         transition: 'box-shadow 160ms ease, transform 160ms ease',
         '&:hover': {
-          boxShadow: '0 12px 28px rgba(30, 42, 80, 0.09)',
+          boxShadow: shadow(theme, 'raised'),
           transform: 'translateY(-2px)',
         },
-      }}
+      })}
     >
       <CardContent sx={{ p: 2.25, '&:last-child': { pb: 2.25 } }}>
         <Stack
@@ -304,13 +306,13 @@ function SnippetCard({
                 aria-label={`Delete ${snippet.title}`}
                 color="error"
                 size="small"
-                sx={{
+                sx={(theme) => ({
                   transition: 'background-color 160ms ease, transform 160ms ease',
                   '&:hover': {
-                    bgcolor: 'rgba(211, 47, 47, 0.08)',
+                    bgcolor: alpha(theme.palette.error.main, 0.08),
                     transform: 'scale(1.08)',
                   },
-                }}
+                })}
                 onClick={onDelete}
               >
                 <DeleteOutlineRoundedIcon fontSize="small" />
@@ -320,10 +322,9 @@ function SnippetCard({
         </Stack>
         <Box
           component="pre"
-          sx={{
-            bgcolor: '#172033',
+          sx={(theme) => ({
+            ...snippetSurface(theme),
             borderRadius: 1,
-            color: '#dce7ff',
             fontFamily: '"ui-monospace", "SFMono-Regular", Consolas, monospace',
             fontSize: 13,
             lineHeight: 1.65,
@@ -334,7 +335,7 @@ function SnippetCard({
             p: 1.75,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-          }}
+          })}
         >
           {snippet.code}
         </Box>
@@ -372,7 +373,7 @@ function IdeaCard({
   onEdit: () => void
 }) {
   return (
-    <Card elevation={0} sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)' }}>
+    <Card elevation={0} sx={(theme) => ({ bgcolor: 'background.paper', borderRadius: 1, boxShadow: shadow(theme, 'flat') })}>
       <CardContent sx={{ p: 2.25, '&:last-child': { pb: 2.25 } }}>
         <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <Box sx={{ minWidth: 0 }}>
@@ -423,7 +424,7 @@ function TodoCard({
   onToggle: () => void
 }) {
   return (
-    <Card elevation={0} sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)', opacity: todo.completed ? 0.7 : 1 }}>
+    <Card elevation={0} sx={(theme) => ({ bgcolor: 'background.paper', borderRadius: 1, boxShadow: shadow(theme, 'flat'), opacity: todo.completed ? 0.7 : 1 })}>
       <CardContent sx={{ p: 2.25, '&:last-child': { pb: 2.25 } }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
           <Checkbox
@@ -557,18 +558,18 @@ function WorkspaceHeader({
           ))}
           <Button
             startIcon={<EditOutlinedIcon />}
-            sx={{
+            sx={(theme) => ({
               borderRadius: 1,
               color: 'text.secondary',
               px: 1.5,
               transition: 'background-color 160ms ease, box-shadow 160ms ease, color 160ms ease, transform 160ms ease',
               '&:hover': {
                 bgcolor: 'action.hover',
-                boxShadow: '0 8px 18px rgba(30, 42, 80, 0.08)',
+                boxShadow: shadow(theme, 'lifted'),
                 color: 'text.primary',
                 transform: 'translateY(-1px)',
               },
-            }}
+            })}
             variant="text"
             onClick={onEditProject}
           >
@@ -591,19 +592,19 @@ function WorkspaceHeader({
       ) : !project ? (
         <Button
           startIcon={<AddRoundedIcon />}
-          sx={{
+          sx={(theme) => ({
             alignSelf: { xs: 'flex-start', sm: 'auto' },
-            bgcolor: 'rgba(91, 97, 232, 0.08)',
+            bgcolor: tint(theme, 0.08),
             borderRadius: 1,
             color: 'primary.main',
             px: 1.75,
             transition: 'background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
             '&:hover': {
-              bgcolor: 'rgba(91, 97, 232, 0.14)',
-              boxShadow: '0 8px 18px rgba(91, 97, 232, 0.16)',
+              bgcolor: tint(theme, 0.14),
+              boxShadow: tintShadow(theme, 0.16),
               transform: 'translateY(-1px)',
             },
-          }}
+          })}
           variant="text"
           onClick={onCreateProject}
         >
@@ -778,7 +779,7 @@ export function ProjectWorkspace({
         <Box sx={{ mt: 3.5 }}>
           <Tabs
             value={activeTab}
-            sx={{
+            sx={(theme) => ({
               borderBottom: 1,
               borderColor: 'divider',
               minHeight: 48,
@@ -788,14 +789,14 @@ export function ProjectWorkspace({
                 transition: 'background-color 160ms ease, color 160ms ease',
               },
               '& .MuiTab-root:hover': {
-                bgcolor: 'rgba(91, 97, 232, 0.06)',
+                bgcolor: tint(theme, 0.06),
                 color: 'primary.main',
               },
               '& .MuiTabs-indicator': {
                 borderRadius: '3px 3px 0 0',
                 height: 3,
               },
-            }}
+            })}
             onChange={(_, value: WorkspaceTab) => onTabChange(value)}
           >
             <Tab
@@ -831,13 +832,13 @@ export function ProjectWorkspace({
           </Tabs>
 
           <Box
-            sx={{
+            sx={(theme) => ({
               bgcolor: 'background.paper',
               borderRadius: 1,
-              boxShadow: '0 1px 2px rgba(30, 42, 80, 0.04)',
+              boxShadow: shadow(theme, 'flat'),
               mt: 1.5,
               p: { xs: 1.5, sm: 2.5 },
-            }}
+            })}
           >
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
@@ -869,18 +870,18 @@ export function ProjectWorkspace({
                 ) : null}
                 <Button
                   startIcon={<AddRoundedIcon />}
-                  sx={{
-                    bgcolor: 'rgba(91, 97, 232, 0.08)',
+                  sx={(theme) => ({
+                    bgcolor: tint(theme, 0.08),
                     borderRadius: 1,
                     color: 'primary.main',
                     px: 1.5,
                     transition: 'background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
                     '&:hover': {
-                      bgcolor: 'rgba(91, 97, 232, 0.14)',
-                      boxShadow: '0 8px 18px rgba(91, 97, 232, 0.14)',
+                      bgcolor: tint(theme, 0.14),
+                      boxShadow: tintShadow(theme),
                       transform: 'translateY(-1px)',
                     },
-                  }}
+                  })}
                   variant="text"
                   onClick={createAction}
                 >

@@ -23,6 +23,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useMemo, useState } from 'react'
+import { shadow, surface } from '../theme'
 import type { Project, ProjectOrganizationInput, ProjectStatus } from '../types'
 import { formatDate } from '../utils/formatDate'
 import { EmptyState } from './EmptyState'
@@ -86,7 +87,7 @@ function ProjectCard({
   return (
     <Card
       elevation={0}
-      sx={{
+      sx={(theme) => ({
         bgcolor: 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
@@ -95,10 +96,10 @@ function ProjectCard({
         transition: 'border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
         '&:hover': {
           borderColor: 'primary.light',
-          boxShadow: '0 14px 30px rgba(30, 42, 80, 0.1)',
+          boxShadow: shadow(theme, 'high'),
           transform: 'translateY(-2px)',
         },
-      }}
+      })}
       onClick={onSelect}
     >
       <CardContent sx={{ p: 2.25, '&:last-child': { pb: 2.25 } }}>
@@ -203,9 +204,10 @@ function ProjectCard({
   )
 }
 
-function Metric({ label, value, accent }: { label: string; value: number; accent?: string }) {
+/** The accent names a palette colour so the stripe follows the active theme. */
+function Metric({ label, value, accent = 'primary' }: { label: string; value: number; accent?: 'info' | 'primary' | 'success' | 'warning' }) {
   return (
-    <Box sx={{ bgcolor: 'rgba(255, 255, 255, 0.72)', borderLeft: `3px solid ${accent ?? '#5b61e8'}`, borderRadius: 1, p: 2 }}>
+    <Box sx={(theme) => ({ bgcolor: surface(theme, 'glass'), borderColor: `${accent}.main`, borderLeft: 3, borderRadius: 1, p: 2 })}>
       <Typography sx={{ fontWeight: 850 }} variant="h5">{value}</Typography>
       <Typography color="text.secondary" variant="caption">{label}</Typography>
     </Box>
@@ -279,10 +281,10 @@ export function ProjectDashboard({
 
         {view === 'active' ? (
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(4, minmax(0, 1fr))' }, mb: 3 }}>
-            <Metric accent="#2e7d32" label="Active" value={activeRegularProjects.filter((project) => project.status === 'ACTIVE').length} />
-            <Metric accent="#5b61e8" label="Favorites" value={activeRegularProjects.filter((project) => project.favorite).length} />
-            <Metric accent="#ed6c02" label="Stale" value={activeRegularProjects.filter((project) => project.stale).length} />
-            <Metric accent="#0288d1" label="Planned / paused" value={activeRegularProjects.filter((project) => project.status !== 'ACTIVE').length} />
+            <Metric accent="success" label="Active" value={activeRegularProjects.filter((project) => project.status === 'ACTIVE').length} />
+            <Metric accent="primary" label="Favorites" value={activeRegularProjects.filter((project) => project.favorite).length} />
+            <Metric accent="warning" label="Stale" value={activeRegularProjects.filter((project) => project.stale).length} />
+            <Metric accent="info" label="Planned / paused" value={activeRegularProjects.filter((project) => project.status !== 'ACTIVE').length} />
           </Box>
         ) : null}
 

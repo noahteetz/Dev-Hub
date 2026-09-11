@@ -5,6 +5,22 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dev Hub</title>
+    <script>
+      // Paints the page in the saved theme before React starts, so a reload in
+      // dark mode does not flash white. The key matches COLOR_MODE_KEY.
+      ;(function () {
+        var mode = 'light'
+        try {
+          var stored = localStorage.getItem('devhub.color-mode')
+          var wantsSystem = stored !== 'light' && stored !== 'dark'
+          var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          mode = (wantsSystem ? systemDark : stored === 'dark') ? 'dark' : 'light'
+        } catch (error) {
+          mode = 'light'
+        }
+        document.documentElement.dataset.colorMode = mode
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

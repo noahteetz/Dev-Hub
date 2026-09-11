@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
 import { Button, Stack, Typography } from '@mui/material'
+import { tint, tintShadow } from '../theme'
 
 interface EmptyStateProps {
   title: string
@@ -40,18 +41,18 @@ export function EmptyState({
       </Typography>
       {actionLabel && onAction ? (
         <Button
-          sx={{
-            bgcolor: 'rgba(91, 97, 232, 0.08)',
+          sx={(theme) => ({
+            bgcolor: tint(theme, 0.08),
             borderRadius: 1,
             color: 'primary.main',
             mt: 1,
             transition: 'background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
             '&:hover': {
-              bgcolor: 'rgba(91, 97, 232, 0.14)',
-              boxShadow: '0 8px 18px rgba(91, 97, 232, 0.14)',
+              bgcolor: tint(theme, 0.14),
+              boxShadow: tintShadow(theme),
               transform: 'translateY(-1px)',
             },
-          }}
+          })}
           variant="text"
           onClick={onAction}
         >
