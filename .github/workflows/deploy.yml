@@ -11,7 +11,10 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+  # Spelled out rather than derived from github.repository: the repository is
+  # named Dev-Hub, and GHCR refuses a tag with capitals in it. This has to stay
+  # identical to the images in deploy/docker-compose.yml.
+  IMAGE_PREFIX: ghcr.io/noahteetz/dev-hub
 
 jobs:
   test:
