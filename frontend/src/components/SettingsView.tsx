@@ -24,6 +24,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { AccountPanel } from '../auth/AccountPanel'
+import { ColorModeChoice } from './ColorModeToggle'
 import { RepositoryPickerDialog } from './RepositoryPickerDialog'
 import { formatDate } from '../utils/formatDate'
 import type { GitCredential, GitCredentialStatus, RepositoryProvider } from '../types'
@@ -145,6 +146,17 @@ export function SettingsView({ onProjectsChanged }: SettingsViewProps) {
   return (
     <Box component="main" sx={{ maxWidth: 760, mx: 'auto', px: { xs: 2, sm: 3 }, py: { xs: 3, sm: 5 }, width: '100%' }}>
       <AccountPanel />
+
+      <Typography component="h2" sx={{ fontWeight: 800, mb: 1 }} variant="h5">
+        Appearance
+      </Typography>
+      <Paper component="section" elevation={0} sx={{ borderRadius: 1, mb: 4, p: { xs: 2, sm: 2.5 } }} variant="outlined">
+        <Typography color="text.secondary" sx={{ mb: 2 }} variant="body2">
+          System follows the light or dark setting of your operating system. The choice is kept in this browser
+          only, so every device can differ.
+        </Typography>
+        <ColorModeChoice />
+      </Paper>
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
         <Typography component="h1" sx={{ fontWeight: 800 }} variant="h5">

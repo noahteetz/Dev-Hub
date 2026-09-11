@@ -49,6 +49,19 @@ real login; the `dev-hub-frontend` client already allows `http://localhost:5173`
 Dev Hub stores no owner per record. Every account in the realm that holds
 `devhub-user` sees the same data.
 
+## Appearance
+
+Dev Hub ships a light and a dark theme. The switch in the sidebar header flips between them, and Settings
+adds a third choice: System follows the light or dark setting of the operating system and moves with it while
+the app is open.
+
+The choice lives in `localStorage`, not in the database, so it belongs to the browser rather than the account
+and every device can differ. A small script in `index.html` reads it before React starts, so reloading in the
+dark theme does not flash a white page.
+
+Both themes are built from one palette in `frontend/src/theme.ts`. Components ask it for tints, shadows, and
+surfaces instead of writing colours of their own, which is what keeps the two modes in step.
+
 ## Deployment
 
 Production setup, the Keycloak realm to import, and the server steps are in

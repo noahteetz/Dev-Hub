@@ -26,7 +26,9 @@ import {
 } from '@mui/material'
 import { Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { accentText, tint, tintShadow } from '../theme'
 import type { Project } from '../types'
+import { ColorModeToggle } from './ColorModeToggle'
 
 export type ApiState = 'loading' | 'ready' | 'error'
 
@@ -80,26 +82,29 @@ export function ProjectSidebar({
       }}
     >
       <Box sx={{ p: 2.5 }}>
-        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
-          <Avatar
-            sx={{
-              bgcolor: 'primary.main',
-              borderRadius: 1,
-              color: 'primary.contrastText',
-              height: 38,
-              width: 38,
-            }}
-          >
-            <HubOutlinedIcon fontSize="small" />
-          </Avatar>
-          <Box>
-            <Typography sx={{ fontWeight: 800, letterSpacing: -0.3 }}>
-              Dev Hub
-            </Typography>
-            <Typography color="text.secondary" variant="caption">
-              Your project memory
-            </Typography>
-          </Box>
+        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center' }}>
+            <Avatar
+              sx={{
+                bgcolor: 'primary.main',
+                borderRadius: 1,
+                color: 'primary.contrastText',
+                height: 38,
+                width: 38,
+              }}
+            >
+              <HubOutlinedIcon fontSize="small" />
+            </Avatar>
+            <Box>
+              <Typography sx={{ fontWeight: 800, letterSpacing: -0.3 }}>
+                Dev Hub
+              </Typography>
+              <Typography color="text.secondary" variant="caption">
+                Your project memory
+              </Typography>
+            </Box>
+          </Stack>
+          <ColorModeToggle />
         </Stack>
       </Box>
 
@@ -107,17 +112,17 @@ export function ProjectSidebar({
         <Button
           fullWidth
           startIcon={<AddRoundedIcon />}
-          sx={{
-            bgcolor: 'rgba(91, 97, 232, 0.08)',
+          sx={(theme) => ({
+            bgcolor: tint(theme, 0.08),
             borderRadius: 1,
             color: 'primary.main',
             transition: 'background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease',
             '&:hover': {
-              bgcolor: 'rgba(91, 97, 232, 0.14)',
-              boxShadow: '0 8px 18px rgba(91, 97, 232, 0.14)',
+              bgcolor: tint(theme, 0.14),
+              boxShadow: tintShadow(theme),
               transform: 'translateY(-1px)',
             },
-          }}
+          })}
           variant="text"
           onClick={onCreateProject}
         >
@@ -129,11 +134,11 @@ export function ProjectSidebar({
         <ListItem disablePadding sx={{ mb: 0.5 }}>
           <ListItemButton
             selected={selectedProjectId === null && dashboardView === 'active'}
-            sx={{
+            sx={(theme) => ({
               borderRadius: 1,
-              '&.Mui-selected': { bgcolor: 'rgba(91, 97, 232, 0.08)', color: 'primary.dark' },
-              '&.Mui-selected:hover': { bgcolor: 'rgba(91, 97, 232, 0.14)' },
-            }}
+              '&.Mui-selected': { bgcolor: tint(theme, 0.08), color: accentText(theme) },
+              '&.Mui-selected:hover': { bgcolor: tint(theme, 0.14) },
+            })}
             onClick={() => onShowDashboard('active')}
           >
             <DashboardOutlinedIcon fontSize="small" sx={{ color: 'primary.main', mr: 1.25 }} />
@@ -143,11 +148,11 @@ export function ProjectSidebar({
         <ListItem disablePadding>
           <ListItemButton
             selected={selectedProjectId === null && dashboardView === 'archived'}
-            sx={{
+            sx={(theme) => ({
               borderRadius: 1,
-              '&.Mui-selected': { bgcolor: 'rgba(91, 97, 232, 0.08)', color: 'primary.dark' },
-              '&.Mui-selected:hover': { bgcolor: 'rgba(91, 97, 232, 0.14)' },
-            }}
+              '&.Mui-selected': { bgcolor: tint(theme, 0.08), color: accentText(theme) },
+              '&.Mui-selected:hover': { bgcolor: tint(theme, 0.14) },
+            })}
             onClick={() => onShowDashboard('archived')}
           >
             <ArchiveOutlinedIcon fontSize="small" sx={{ color: 'text.secondary', mr: 1.25 }} />
@@ -250,22 +255,22 @@ export function ProjectSidebar({
           >
             <ListItemButton
               selected={project.id === selectedProjectId}
-              sx={{
+              sx={(theme) => ({
                 borderRadius: 1,
                 pr: 11,
                 transition: 'background-color 160ms ease, transform 160ms ease',
                 '&:hover': {
-                  bgcolor: 'rgba(91, 97, 232, 0.05)',
+                  bgcolor: tint(theme, 0.05),
                   transform: 'translateX(2px)',
                 },
                 '&.Mui-selected': {
-                  bgcolor: 'rgba(91, 97, 232, 0.08)',
-                  color: 'primary.dark',
+                  bgcolor: tint(theme, 0.08),
+                  color: accentText(theme),
                 },
                 '&.Mui-selected:hover': {
-                  bgcolor: 'rgba(91, 97, 232, 0.14)',
+                  bgcolor: tint(theme, 0.14),
                 },
-              }}
+              })}
               onClick={() => onSelectProject(project.id)}
             >
               <Avatar
