@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Box, Button, Snackbar } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
 import './App.css'
@@ -90,6 +90,9 @@ type SavingAction =
   | 'capture'
   | null
 
+/** Shortest gap between two quiet reloads, so switching tabs quickly costs nothing. */
+const quietReloadGap = 60_000
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
 }
@@ -137,6 +140,9 @@ function App() {
   const [captureError, setCaptureError] = useState('')
   const [knowledgeVersion, setKnowledgeVersion] = useState(0)
   const [commandOpen, setCommandOpen] = useState(false)
+  // The backend syncs every repository once an hour, so an open tab drifts out of date.
+  // This is when it last caught up, to keep tab switching from turning into polling.
+  const lastQuietReload = useRef(Date.now())
 
   const applyProjects = useCallback((loadedProjects: Project[]) => {
     setProjects(loadedProjects)
@@ -203,6 +209,47 @@ function App() {
       active = false
     }
   }, [])
+
+  // Picks up what the hourly background sync found while the tab was in the background,
+  // so the activity order and the repository panel are current on the way back in.
+  useEffect(() => {
+    let active = true
+
+    const catchUp = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastQuietReload.current < quietReloadGap) {
+        return
+      }
+      lastQuietReload.current = Date.now()
+
+      Promise.all([api.projects.list(false), api.projects.list(true)])
+        .then(([loadedProjects, loadedArchivedProjects]) => {
+          if (!active) {
+            return
+          }
+          applyProjects(loadedProjects)
+          setArchivedProjects(loadedArchivedProjects)
+          return selectedProjectId ? api.repository.get(selectedProjectId) : null
+        })
+        .then((loadedRepository) => {
+          if (active && loadedRepository) {
+            setRepository(loadedRepository)
+          }
+        })
+        .catch(() => {
+          // Nobody asked for this reload, so a failed one stays quiet and the next
+          // return to the tab tries again.
+        })
+    }
+
+    document.addEventListener('visibilitychange', catchUp)
+    window.addEventListener('focus', catchUp)
+
+    return () => {
+      active = false
+      document.removeEventListener('visibilitychange', catchUp)
+      window.removeEventListener('focus', catchUp)
+    }
+  }, [applyProjects, selectedProjectId])
 
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? null

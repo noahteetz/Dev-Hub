@@ -81,6 +81,19 @@ describe('RepositoryPanel', () => {
     expect(screen.getByText('4997/5000 requests left')).toBeInTheDocument()
   })
 
+  it('says when the last sync succeeded, so the hourly one is visible', () => {
+    view(metadata())
+
+    expect(screen.getByText(/Last synced/)).toBeInTheDocument()
+    expect(screen.getByText(/once an hour/)).toBeInTheDocument()
+  })
+
+  it('keeps the sync line out of the way while a problem is on screen', () => {
+    view(metadata({ syncStatus: 'FAILED', errorMessage: 'The repository provider returned an error.' }))
+
+    expect(screen.queryByText(/Last synced/)).not.toBeInTheDocument()
+  })
+
   it('leaves out the quota when the provider reported none', () => {
     view(metadata())
 

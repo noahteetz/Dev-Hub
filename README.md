@@ -90,6 +90,26 @@ token has to be authorized for the organization as well.
 Once a token is stored, the project dialog offers a picker instead of a URL field, and Settings can turn a
 multi-selection into projects in one step.
 
+## Repository sync
+
+Dev Hub refreshes every connected repository on its own, once an hour, so the last commit on a project card
+and the activity order on the dashboard stay current without pressing "Sync now". The panel says when the
+last sync succeeded.
+
+A run is cheap. Both providers answer a conditional request with `304 Not Modified` when nothing changed,
+which costs a single request and, on GitHub, none of the hourly quota; only a repository that actually moved
+is read in full. Archived projects, projects without a repository URL, unsupported Git hosts, and a project
+whose quota has not reset yet are all left out, and one unreachable repository does not stop the rest.
+
+| Variable | Meaning |
+| --- | --- |
+| `DEVHUB_REPOSITORY_SYNC_ENABLED` | `false` turns the background sync off; the button in the app keeps working |
+| `DEVHUB_REPOSITORY_SYNC_INTERVAL` | How old a repository's last attempt has to be before it is synced again. Default `1h` |
+| `DEVHUB_REPOSITORY_SYNC_INITIAL_DELAY` | Grace period after start before the first run. Default `2m` |
+| `DEVHUB_REPOSITORY_SYNC_REQUEST_SPACING` | Pause between two repositories in one run. Default `1s` |
+
+An open browser tab picks the new data up when it comes back into focus, at most once a minute.
+
 ## Backend API
 
 The backend exposes CRUD endpoints for projects and their stored information:

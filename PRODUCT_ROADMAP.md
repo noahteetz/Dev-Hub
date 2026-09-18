@@ -354,7 +354,9 @@ Ein fehlgeschlagener Abruf behaelt den letzten erfolgreichen Cache. Nur Status u
 - `GET /api/projects/{id}/repository` liefert Verbindung, Cache, Status und Provider-Links
 - `POST /api/projects/{id}/repository/refresh` fuehrt den Abruf synchron aus und liefert den aktualisierten Stand
 
-Der synchrone Abruf ist fuer den ersten Meilenstein ausreichend und vereinfacht Fehlerbehandlung und Betrieb. Timeouts begrenzen die Wartezeit. Regelmaessige Hintergrundaktualisierung folgt erst nach beobachtetem Bedarf.
+Der synchrone Abruf ist fuer den ersten Meilenstein ausreichend und vereinfacht Fehlerbehandlung und Betrieb. Timeouts begrenzen die Wartezeit.
+
+Die regelmaessige Hintergrundaktualisierung ist inzwischen ergaenzt: ein Scheduler synchronisiert jedes verbundene Repository stuendlich ueber denselben Weg, damit `effectiveActivityAt` und die Aktivitaetssortierung ohne manuelles Zutun aktuell bleiben. Unveraenderte Repositories antworten dank ETag mit `304` und kosten damit kaum Kontingent. Einstellbar ueber `devhub.repository.sync.*`.
 
 **Fehlerabbildung**
 

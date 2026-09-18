@@ -126,6 +126,12 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
             ) : null}
           </Stack>
 
+          {syncStatus === 'READY' && metadata?.lastSuccessfulSyncAt ? (
+            <Typography color="text.secondary" sx={{ mt: 1.5 }} variant="body2">
+              Last synced {formatDate(metadata.lastSuccessfulSyncAt)}. Dev Hub checks every repository once an hour.
+            </Typography>
+          ) : null}
+
           {metadata?.errorMessage ? (
             <Typography color={syncStatus === 'FAILED' ? 'error.main' : 'text.secondary'} sx={{ mt: 1.5 }} variant="body2">
               {metadata.errorMessage}

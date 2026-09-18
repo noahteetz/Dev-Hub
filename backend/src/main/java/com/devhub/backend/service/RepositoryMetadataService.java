@@ -14,6 +14,8 @@ import com.devhub.backend.model.RepositorySyncStatus;
 import com.devhub.backend.repository.ProjectRepository;
 import com.devhub.backend.repository.RepositoryMetadataRepository;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
@@ -26,6 +28,8 @@ public class RepositoryMetadataService {
 	private final RepositoryUrlParser urlParser;
 	private final GitCredentialService credentialService;
 	private final List<RepositoryMetadataProvider> providers;
+	/** Projects a sync is running for right now, so a second sync does not duplicate it. */
+	private final Set<Long> inFlight = ConcurrentHashMap.newKeySet();
 
 	public RepositoryMetadataService(
 			ProjectRepository projectRepository,
@@ -65,6 +69,21 @@ public class RepositoryMetadataService {
 			return connection(project);
 		}
 
+		// A manual sync and the hourly background sync can land on the same project at
+		// the same moment. Both write the same row, so the second one waits for nothing
+		// and reports what the first one is about to store.
+		if (!inFlight.add(project.id())) {
+			return connection(project);
+		}
+		try {
+			fetchInto(projectId, reference);
+		} finally {
+			inFlight.remove(project.id());
+		}
+		return connection(project);
+	}
+
+	private void fetchInto(long projectId, RepositoryReference reference) {
 		RepositoryMetadataProvider provider = providers.stream()
 				.filter(candidate -> candidate.provider() == reference.provider())
 				.findFirst()
@@ -104,7 +123,6 @@ public class RepositoryMetadataService {
 					RepositoryRateLimit.UNKNOWN
 			);
 		}
-		return connection(project);
 	}
 
 	private CredentialState credentialState(RepositoryProvider provider, RepositoryCredential credential) {

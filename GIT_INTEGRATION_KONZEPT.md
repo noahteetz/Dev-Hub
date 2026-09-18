@@ -143,4 +143,5 @@ Der Import akzeptiert ausschliesslich Repositories, die in der Liste des hinterl
 - OAuth- oder GitHub-App-Flow, solange nur gelesen wird
 - Mehrere Accounts pro Provider gleichzeitig; das Modell ist dafuer vorbereitet, die UI bleibt zunaechst bei einem
 - Schreibzugriffe, Klonen oder SSH-Keys; das gehoert zu Remote-Workspaces
-- Automatische Hintergrund-Synchronisation; `refresh` bleibt vorerst manuell
+- Webhooks oder Push-basierte Aktualisierung; die stuendliche Hintergrund-Synchronisation deckt den Bedarf ab
+  (`devhub.repository.sync.*`), `refresh` bleibt daneben als manueller Ausloeser bestehen

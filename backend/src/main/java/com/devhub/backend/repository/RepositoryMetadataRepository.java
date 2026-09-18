@@ -5,6 +5,7 @@ import com.devhub.backend.model.RepositoryProvider;
 import com.devhub.backend.model.RepositoryRateLimit;
 import com.devhub.backend.model.RepositoryReference;
 import com.devhub.backend.model.RepositorySnapshot;
+import com.devhub.backend.model.RepositorySyncCandidate;
 import com.devhub.backend.model.RepositorySyncStatus;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -14,6 +15,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -45,6 +47,36 @@ public class RepositoryMetadataRepository {
 				this::mapRow,
 				projectId
 		).stream().findFirst();
+	}
+
+	/**
+	 * Projects whose repository was last attempted before {@code dueBefore}, oldest
+	 * attempt first. Archived projects and projects without a repository URL never
+	 * appear; a project that has never been synced has no metadata row and is due
+	 * right away.
+	 */
+	public List<RepositorySyncCandidate> findDueForSync(Instant dueBefore) {
+		return jdbcTemplate.query(
+				"""
+				SELECT p.id, p.repository_url, rm.sync_status, rm.rate_limit_reset_at
+					FROM projects p
+					LEFT JOIN repository_metadata rm ON rm.project_id = p.id
+					WHERE p.status <> 'ARCHIVED'
+						AND COALESCE(p.repository_url, '') <> ''
+						AND (rm.last_attempt_at IS NULL OR rm.last_attempt_at < ?)
+					ORDER BY rm.last_attempt_at NULLS FIRST, p.id
+				""",
+				(resultSet, rowNumber) -> {
+					String status = resultSet.getString("sync_status");
+					return new RepositorySyncCandidate(
+							resultSet.getLong("id"),
+							resultSet.getString("repository_url"),
+							status == null ? RepositorySyncStatus.NEVER_SYNCED : RepositorySyncStatus.valueOf(status),
+							toInstant(resultSet.getTimestamp("rate_limit_reset_at"))
+					);
+				},
+				timestamp(dueBefore)
+		);
 	}
 
 	public void markSyncing(long projectId, RepositoryReference reference) {
