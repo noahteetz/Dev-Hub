@@ -142,7 +142,7 @@ function App() {
   const [commandOpen, setCommandOpen] = useState(false)
   // The backend syncs every repository once an hour, so an open tab drifts out of date.
   // This is when it last caught up, to keep tab switching from turning into polling.
-  const lastQuietReload = useRef(Date.now())
+  const lastQuietReload = useRef<number | null>(null)
 
   const applyProjects = useCallback((loadedProjects: Project[]) => {
     setProjects(loadedProjects)
@@ -214,12 +214,17 @@ function App() {
   // so the activity order and the repository panel are current on the way back in.
   useEffect(() => {
     let active = true
+    lastQuietReload.current = Date.now()
 
     const catchUp = () => {
-      if (document.visibilityState !== 'visible' || Date.now() - lastQuietReload.current < quietReloadGap) {
+      const now = Date.now()
+      if (
+        document.visibilityState !== 'visible'
+        || (lastQuietReload.current !== null && now - lastQuietReload.current < quietReloadGap)
+      ) {
         return
       }
-      lastQuietReload.current = Date.now()
+      lastQuietReload.current = now
 
       Promise.all([api.projects.list(false), api.projects.list(true)])
         .then(([loadedProjects, loadedArchivedProjects]) => {
