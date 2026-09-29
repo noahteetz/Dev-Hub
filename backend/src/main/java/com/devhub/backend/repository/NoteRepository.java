@@ -16,7 +16,8 @@ import org.springframework.stereotype.Repository;
 public class NoteRepository {
 
 	private static final String SELECT_COLUMNS = """
-			SELECT id, project_id, title, content, created_at, updated_at
+			SELECT id, project_id, title, content, created_at, updated_at,
+					(SELECT COALESCE(NULLIF(u.display_name, ''), u.username) FROM app_users u WHERE u.id = notes.created_by) AS created_by_name
 			FROM notes
 			""";
 
@@ -28,18 +29,20 @@ public class NoteRepository {
 		this.currentUser = currentUser;
 	}
 
-	public Note create(long projectId, String title, String content) {
-		long ownerId = currentUser.id();
+	/** The note belongs to the project owner's data; the current user is recorded as its author. */
+	public Note create(long ownerId, long projectId, String title, String content) {
+		long authorId = currentUser.id();
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO notes (owner_id, project_id, title, content) VALUES (?, ?, ?, ?)",
+					"INSERT INTO notes (owner_id, created_by, project_id, title, content) VALUES (?, ?, ?, ?, ?)",
 					new String[]{"id"}
 			);
 			statement.setLong(1, ownerId);
-			statement.setLong(2, projectId);
-			statement.setString(3, title);
-			statement.setString(4, content);
+			statement.setLong(2, authorId);
+			statement.setLong(3, projectId);
+			statement.setString(4, title);
+			statement.setString(5, content);
 			return statement;
 		}, keyHolder);
 
@@ -54,20 +57,18 @@ public class NoteRepository {
 
 	public List<Note> findAllByProjectId(long projectId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND owner_id = ? ORDER BY id DESC",
+				SELECT_COLUMNS + " WHERE project_id = ? ORDER BY id DESC",
 				NoteRepository::mapRow,
-				projectId,
-				currentUser.id()
+				projectId
 		);
 	}
 
 	public Optional<Note> findById(long projectId, long noteId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND id = ? AND owner_id = ?",
+				SELECT_COLUMNS + " WHERE project_id = ? AND id = ?",
 				NoteRepository::mapRow,
 				projectId,
-				noteId,
-				currentUser.id()
+				noteId
 		).stream().findFirst();
 	}
 
@@ -76,22 +77,20 @@ public class NoteRepository {
 				"""
 				UPDATE notes
 				SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE project_id = ? AND id = ? AND owner_id = ?
+				WHERE project_id = ? AND id = ?
 				""",
 				title,
 				content,
 				projectId,
-				noteId,
-				currentUser.id()
+				noteId
 		);
 	}
 
 	public int delete(long projectId, long noteId) {
 		return jdbcTemplate.update(
-				"DELETE FROM notes WHERE project_id = ? AND id = ? AND owner_id = ?",
+				"DELETE FROM notes WHERE project_id = ? AND id = ?",
 				projectId,
-				noteId,
-				currentUser.id()
+				noteId
 		);
 	}
 
@@ -102,7 +101,8 @@ public class NoteRepository {
 				resultSet.getString("title"),
 				resultSet.getString("content"),
 				resultSet.getTimestamp("created_at").toInstant(),
-				resultSet.getTimestamp("updated_at").toInstant()
+				resultSet.getTimestamp("updated_at").toInstant(),
+				resultSet.getString("created_by_name")
 		);
 	}
 }

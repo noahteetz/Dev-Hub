@@ -3,6 +3,7 @@ package com.devhub.backend.controller;
 import com.devhub.backend.dto.ProjectRequest;
 import com.devhub.backend.dto.ProjectArchiveRequest;
 import com.devhub.backend.dto.ProjectContextRequest;
+import com.devhub.backend.dto.ProjectFavoriteRequest;
 import com.devhub.backend.dto.ProjectOrganizationRequest;
 import com.devhub.backend.model.Project;
 import com.devhub.backend.service.ProjectService;
@@ -64,6 +65,14 @@ public class ProjectController {
 			@RequestBody ProjectOrganizationRequest request
 	) {
 		return projectService.updateOrganization(projectId, request);
+	}
+
+	@PutMapping("/{projectId}/favorite")
+	public Project setFavorite(
+			@PathVariable("projectId") long projectId,
+			@RequestBody ProjectFavoriteRequest request
+	) {
+		return projectService.setFavorite(projectId, request.favorite());
 	}
 
 	@PutMapping("/{projectId}/context")

@@ -5,6 +5,7 @@ import com.devhub.backend.service.TagService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -18,7 +19,7 @@ public class TagController {
 	}
 
 	@GetMapping
-	public List<Tag> findAll() {
-		return tagService.findAll();
+	public List<Tag> findAll(@RequestParam(name = "projectId", required = false) Long projectId) {
+		return projectId == null ? tagService.findAll() : tagService.findAllForProject(projectId);
 	}
 }

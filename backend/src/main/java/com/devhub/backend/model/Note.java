@@ -8,6 +8,7 @@ public record Note(
 		String title,
 		String content,
 		Instant createdAt,
-		Instant updatedAt
+		Instant updatedAt,
+		String createdBy
 ) {
 }

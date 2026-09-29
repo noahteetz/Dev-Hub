@@ -1,11 +1,30 @@
 export type ProjectStatus = 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED'
 
+/** The caller's standing in one project; only VIEWER and EDITOR can be granted. */
+export type ProjectRole = 'OWNER' | 'EDITOR' | 'VIEWER'
+
+export interface ProjectMember {
+  userId: number
+  username: string
+  displayName: string
+  role: ProjectRole
+  /** Null for the owner. */
+  addedAt: string | null
+}
+
+export interface UserSummary {
+  id: number
+  username: string
+  displayName: string
+}
+
 export interface Project {
   id: number
   name: string
   description: string
   status: ProjectStatus
   priority: number
+  /** A personal mark of the current user. */
   favorite: boolean
   statusBeforeArchive: ProjectStatus | null
   repositoryUrl: string
@@ -24,12 +43,15 @@ export interface Project {
   updatedAt: string
   effectiveActivityAt: string
   stale: boolean
+  role: ProjectRole
+  ownerName: string
+  /** The owner shared it with somebody, or it belongs to somebody else. */
+  shared: boolean
 }
 
 export interface ProjectOrganizationInput {
   status?: ProjectStatus
   priority?: number
-  favorite?: boolean
 }
 
 export interface ProjectContextInput {
@@ -168,6 +190,7 @@ export interface Note {
   content: string
   createdAt: string
   updatedAt: string
+  createdBy?: string
 }
 
 export interface CodeSnippet {
@@ -178,6 +201,7 @@ export interface CodeSnippet {
   code: string
   createdAt: string
   updatedAt: string
+  createdBy?: string
 }
 
 export interface Tag {
@@ -203,6 +227,7 @@ export interface ContentEntry {
   filedAt: string | null
   createdAt: string
   updatedAt: string
+  createdBy?: string
 }
 
 export interface CaptureInput {
@@ -238,6 +263,7 @@ export interface Idea {
   tags: Tag[]
   createdAt: string
   updatedAt: string
+  createdBy?: string
 }
 
 export interface Todo {
@@ -250,6 +276,7 @@ export interface Todo {
   tags: Tag[]
   createdAt: string
   updatedAt: string
+  createdBy?: string
 }
 
 export interface ProjectLinkInput {

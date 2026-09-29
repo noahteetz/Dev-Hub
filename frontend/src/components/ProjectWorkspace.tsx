@@ -7,6 +7,7 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined'
+import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded'
 import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded'
@@ -36,6 +37,7 @@ import type { ReactNode } from 'react'
 import { shadow, snippetSurface, surface, tint, tintShadow } from '../theme'
 import type { CodeSnippet, Idea, Note, Project, RepositoryConnection, Todo } from '../types'
 import { formatDate } from '../utils/formatDate'
+import { projectCan, roleLabel } from '../utils/projectPermissions'
 import { EmptyState } from './EmptyState'
 import { MarkdownView } from './MarkdownView'
 import { RepositoryPanel } from './RepositoryPanel'
@@ -70,6 +72,7 @@ interface ProjectWorkspaceProps {
   onArchiveProject: () => void
   onEditContext: () => void
   onRefreshRepository: () => void
+  onOpenMembers: () => void
   repository: RepositoryConnection | null
   repositoryLoading: boolean
   repositoryRefreshing: boolean
@@ -128,6 +131,7 @@ function Metric({
 }
 
 function ContextPanel({ project, onEdit }: { project: Project; onEdit: () => void }) {
+  const canEdit = projectCan(project, 'editContext')
   const entries = [
     { label: 'Progress', value: project.progressSummary, wide: true },
     { label: 'Next step', value: project.nextStep, wide: true },
@@ -144,7 +148,7 @@ function ContextPanel({ project, onEdit }: { project: Project; onEdit: () => voi
           <Typography sx={{ fontWeight: 800 }}>Resume here</Typography>
           <Typography color="text.secondary" variant="body2">A compact checkpoint for the next work session.</Typography>
         </Box>
-        <Button startIcon={<EditOutlinedIcon />} variant="outlined" onClick={onEdit}>Edit context</Button>
+        {canEdit ? <Button startIcon={<EditOutlinedIcon />} variant="outlined" onClick={onEdit}>Edit context</Button> : null}
       </Stack>
       <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, mt: 2.5 }}>
         {entries.map((entry) => (
@@ -164,10 +168,14 @@ function ContextPanel({ project, onEdit }: { project: Project; onEdit: () => voi
 
 function NoteCard({
   note,
+  readOnly,
+  showAuthor,
   onEdit,
   onDelete,
 }: {
   note: Note
+  readOnly: boolean
+  showAuthor: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -201,7 +209,7 @@ function NoteCard({
             />
           </Box>
           <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
-            <Tooltip title="Edit note">
+            <Tooltip title={readOnly ? 'Open note' : 'Edit note'}>
               <IconButton
                 aria-label={`Edit ${note.title}`}
                 size="small"
@@ -217,6 +225,7 @@ function NoteCard({
                 <EditOutlinedIcon fontSize="small" />
               </IconButton>
             </Tooltip>
+            {readOnly ? null : (
               <Tooltip title="Delete note">
                 <IconButton
                   aria-label={`Delete ${note.title}`}
@@ -234,10 +243,11 @@ function NoteCard({
                   <DeleteOutlineRoundedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
+            )}
           </Stack>
         </Stack>
         <Typography color="text.disabled" sx={{ display: 'block', mt: 1.75 }} variant="caption">
-          Updated {formatDate(note.updatedAt)}
+          Updated {formatDate(note.updatedAt)}{showAuthor && note.createdBy ? ` - created by ${note.createdBy}` : ''}
         </Typography>
       </CardContent>
     </Card>
@@ -246,10 +256,14 @@ function NoteCard({
 
 function SnippetCard({
   snippet,
+  readOnly,
+  showAuthor,
   onEdit,
   onDelete,
 }: {
   snippet: CodeSnippet
+  readOnly: boolean
+  showAuthor: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -284,6 +298,7 @@ function SnippetCard({
               sx={{ mt: 0.75, bgcolor: 'action.hover', fontFamily: 'monospace', fontSize: 11 }}
             />
           </Box>
+          {readOnly ? null : (
           <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
             <Tooltip title="Edit snippet">
               <IconButton
@@ -319,6 +334,7 @@ function SnippetCard({
               </IconButton>
             </Tooltip>
           </Stack>
+          )}
         </Stack>
         <Box
           component="pre"
@@ -340,7 +356,7 @@ function SnippetCard({
           {snippet.code}
         </Box>
         <Typography color="text.disabled" sx={{ display: 'block', mt: 1.5 }} variant="caption">
-          Updated {formatDate(snippet.updatedAt)}
+          Updated {formatDate(snippet.updatedAt)}{showAuthor && snippet.createdBy ? ` - created by ${snippet.createdBy}` : ''}
         </Typography>
       </CardContent>
     </Card>
@@ -363,11 +379,15 @@ function TagList({ tags }: { tags: Idea['tags'] }) {
 
 function IdeaCard({
   idea,
+  readOnly,
+  showAuthor,
   onConvert,
   onDelete,
   onEdit,
 }: {
   idea: Idea
+  readOnly: boolean
+  showAuthor: boolean
   onConvert: () => void
   onDelete: () => void
   onEdit: () => void
@@ -384,6 +404,7 @@ function IdeaCard({
             {idea.content ? <Typography color="text.secondary" sx={{ mt: 0.75, whiteSpace: 'pre-wrap' }} variant="body2">{idea.content}</Typography> : null}
             <TagList tags={idea.tags} />
           </Box>
+          {readOnly ? null : (
           <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
             {!idea.converted ? (
               <Tooltip title="Convert to todo">
@@ -403,9 +424,10 @@ function IdeaCard({
               </IconButton>
             </Tooltip>
           </Stack>
+          )}
         </Stack>
         <Typography color="text.disabled" sx={{ display: 'block', mt: 1.75 }} variant="caption">
-          {idea.converted ? 'Converted' : 'Updated'} {formatDate(idea.updatedAt)}
+          {idea.converted ? 'Converted' : 'Updated'} {formatDate(idea.updatedAt)}{showAuthor && idea.createdBy ? ` - created by ${idea.createdBy}` : ''}
         </Typography>
       </CardContent>
     </Card>
@@ -414,11 +436,15 @@ function IdeaCard({
 
 function TodoCard({
   todo,
+  readOnly,
+  showAuthor,
   onDelete,
   onEdit,
   onToggle,
 }: {
   todo: Todo
+  readOnly: boolean
+  showAuthor: boolean
   onDelete: () => void
   onEdit: () => void
   onToggle: () => void
@@ -430,6 +456,7 @@ function TodoCard({
           <Checkbox
             aria-label={`Mark ${todo.title} as ${todo.completed ? 'open' : 'completed'}`}
             checked={todo.completed}
+            disabled={readOnly}
             size="small"
             sx={{ mt: -0.75 }}
             onChange={onToggle}
@@ -439,6 +466,7 @@ function TodoCard({
             {todo.content ? <Typography color="text.secondary" sx={{ mt: 0.75, whiteSpace: 'pre-wrap' }} variant="body2">{todo.content}</Typography> : null}
             <TagList tags={todo.tags} />
           </Box>
+          {readOnly ? null : (
           <Stack direction="row" spacing={0.25} sx={{ flexShrink: 0 }}>
             <Tooltip title="Edit todo">
               <IconButton aria-label={`Edit ${todo.title}`} size="small" onClick={onEdit}>
@@ -451,9 +479,10 @@ function TodoCard({
               </IconButton>
             </Tooltip>
           </Stack>
+          )}
         </Stack>
         <Typography color="text.disabled" sx={{ display: 'block', ml: 4.25, mt: 1.75 }} variant="caption">
-          {todo.completed ? 'Completed' : 'Updated'} {formatDate(todo.updatedAt)}
+          {todo.completed ? 'Completed' : 'Updated'} {formatDate(todo.updatedAt)}{showAuthor && todo.createdBy ? ` - created by ${todo.createdBy}` : ''}
         </Typography>
       </CardContent>
     </Card>
@@ -486,11 +515,13 @@ function WorkspaceHeader({
   onCreateProject,
   onArchiveProject,
   onEditProject,
+  onOpenMembers,
 }: {
   project: Project | null
   onCreateProject: () => void
   onEditProject: () => void
   onArchiveProject: () => void
+  onOpenMembers: () => void
 }) {
   return (
     <Toolbar
@@ -531,6 +562,16 @@ function WorkspaceHeader({
         <Typography color="text.secondary" sx={{ mt: 0.75 }} variant="body1">
           {project?.description || 'A focused place for everything this project needs.'}
         </Typography>
+        {project?.shared ? (
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <Chip
+              icon={<GroupOutlinedIcon />}
+              label={project.role === 'OWNER' ? 'Shared with others' : `Shared by ${project.ownerName}`}
+              size="small"
+            />
+            {project.role === 'OWNER' ? null : <Chip label={roleLabel(project.role)} size="small" variant="outlined" />}
+          </Stack>
+        ) : null}
       </Box>
 
       {project ? (
@@ -556,6 +597,10 @@ function WorkspaceHeader({
               </IconButton>
             </Tooltip>
           ))}
+          <Button startIcon={<GroupOutlinedIcon />} sx={{ borderRadius: 1, color: 'text.secondary', px: 1.5 }} variant="text" onClick={onOpenMembers}>
+            {projectCan(project, 'manageMembers') ? 'Share' : 'Members'}
+          </Button>
+          {projectCan(project, 'editMetadata') ? (
           <Button
             startIcon={<EditOutlinedIcon />}
             sx={(theme) => ({
@@ -575,6 +620,8 @@ function WorkspaceHeader({
           >
             Edit
           </Button>
+          ) : null}
+          {projectCan(project, 'archive') ? (
           <Tooltip title="Archive project">
             <IconButton
               aria-label={`Archive ${project.name}`}
@@ -588,6 +635,7 @@ function WorkspaceHeader({
               <ArchiveOutlinedIcon />
             </IconButton>
           </Tooltip>
+          ) : null}
         </Stack>
       ) : !project ? (
         <Button
@@ -643,6 +691,7 @@ export function ProjectWorkspace({
   onArchiveProject,
   onEditContext,
   onRefreshRepository,
+  onOpenMembers,
   repository,
   repositoryLoading,
   repositoryRefreshing,
@@ -664,6 +713,7 @@ export function ProjectWorkspace({
             onCreateProject={onCreateProject}
             onArchiveProject={onArchiveProject}
             onEditProject={onEditProject}
+            onOpenMembers={onOpenMembers}
             project={project}
           />
           <EmptyState
@@ -679,6 +729,8 @@ export function ProjectWorkspace({
   }
 
   const isSystemSection = false
+  const readOnly = !projectCan(project, 'writeContent')
+  const showAuthor = project.shared
   const filteredIdeas = tagFilter
     ? ideas.filter((idea) => idea.tags.some((tag) => tag.name === tagFilter))
     : ideas
@@ -738,6 +790,7 @@ export function ProjectWorkspace({
           onCreateProject={onCreateProject}
           onArchiveProject={onArchiveProject}
           onEditProject={onEditProject}
+          onOpenMembers={onOpenMembers}
           project={project}
         />
 
@@ -768,6 +821,7 @@ export function ProjectWorkspace({
         {!isSystemSection ? <ContextPanel onEdit={onEditContext} project={project} /> : null}
         {!isSystemSection ? (
           <RepositoryPanel
+            canRefresh={projectCan(project, 'manageRepository')}
             loading={repositoryLoading}
             onRefresh={onRefreshRepository}
             project={project}
@@ -868,6 +922,7 @@ export function ProjectWorkspace({
                     </Select>
                   </FormControl>
                 ) : null}
+                {readOnly ? null : (
                 <Button
                   startIcon={<AddRoundedIcon />}
                   sx={(theme) => ({
@@ -887,6 +942,7 @@ export function ProjectWorkspace({
                 >
                   {createLabel}
                 </Button>
+                )}
               </Stack>
             </Stack>
 
@@ -903,7 +959,7 @@ export function ProjectWorkspace({
                         ? tagFilter ? 'No ideas use this tag yet.' : 'Capture a possibility before it gets lost.'
                         : tagFilter ? 'No todos use this tag yet.' : 'Add the next useful task for this project.'
                 }
-                actionLabel={createLabel}
+                actionLabel={readOnly ? undefined : createLabel}
                 icon={
                   activeTab === 'notes' || isSystemSection ? (
                     <DescriptionOutlinedIcon sx={{ color: 'primary.main', fontSize: 38 }} />
@@ -915,7 +971,7 @@ export function ProjectWorkspace({
                     <CheckCircleOutlineRoundedIcon sx={{ color: 'primary.main', fontSize: 38 }} />
                   )
                 }
-                onAction={createAction}
+                onAction={readOnly ? undefined : createAction}
                 title={
                   activeTab === 'notes' || isSystemSection
                     ? 'No notes yet'
@@ -934,6 +990,8 @@ export function ProjectWorkspace({
                   <NoteCard
                     key={note.id}
                     note={note}
+                    readOnly={readOnly}
+                    showAuthor={showAuthor}
                     onDelete={() => onDeleteNote(note)}
                     onEdit={() => onEditNote(note)}
                   />
@@ -947,6 +1005,8 @@ export function ProjectWorkspace({
                   <SnippetCard
                     key={snippet.id}
                     snippet={snippet}
+                    readOnly={readOnly}
+                    showAuthor={showAuthor}
                     onDelete={() => onDeleteSnippet(snippet)}
                     onEdit={() => onEditSnippet(snippet)}
                   />
@@ -960,6 +1020,8 @@ export function ProjectWorkspace({
                   <IdeaCard
                     key={idea.id}
                     idea={idea}
+                    readOnly={readOnly}
+                    showAuthor={showAuthor}
                     onConvert={() => onConvertIdea(idea)}
                     onDelete={() => onDeleteIdea(idea)}
                     onEdit={() => onEditIdea(idea)}
@@ -974,6 +1036,8 @@ export function ProjectWorkspace({
                   <TodoCard
                     key={todo.id}
                     todo={todo}
+                    readOnly={readOnly}
+                    showAuthor={showAuthor}
                     onDelete={() => onDeleteTodo(todo)}
                     onEdit={() => onEditTodo(todo)}
                     onToggle={() => onToggleTodo(todo)}

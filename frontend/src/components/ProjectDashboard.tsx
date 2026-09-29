@@ -26,6 +26,7 @@ import { useMemo, useState } from 'react'
 import { shadow, surface } from '../theme'
 import type { Project, ProjectOrganizationInput, ProjectStatus } from '../types'
 import { formatDate } from '../utils/formatDate'
+import { projectCan } from '../utils/projectPermissions'
 import { EmptyState } from './EmptyState'
 
 export type DashboardView = 'active' | 'archived'
@@ -40,6 +41,7 @@ interface ProjectDashboardProps {
   onArchiveProject: (project: Project) => void
   onRestoreProject: (project: Project) => void
   onUpdateOrganization: (projectId: number, input: ProjectOrganizationInput) => void
+  onToggleFavorite: (projectId: number, favorite: boolean) => void
 }
 
 const statusLabels: Record<ProjectStatus, string> = {
@@ -66,6 +68,7 @@ function ProjectCard({
   onArchive,
   onRestore,
   onUpdateOrganization,
+  onToggleFavorite,
 }: {
   project: Project
   archived: boolean
@@ -73,10 +76,13 @@ function ProjectCard({
   onArchive: () => void
   onRestore: () => void
   onUpdateOrganization: (input: ProjectOrganizationInput) => void
+  onToggleFavorite: (favorite: boolean) => void
 }) {
+  const canOrganize = projectCan(project, 'editMetadata')
+
   function toggleFavorite(event: React.MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
-    onUpdateOrganization({ favorite: !project.favorite })
+    onToggleFavorite(!project.favorite)
   }
 
   function setActive(event: React.MouseEvent<HTMLButtonElement>) {
@@ -109,6 +115,7 @@ function ProjectCard({
               <Typography noWrap sx={{ fontWeight: 800 }}>{project.name}</Typography>
               <Chip color={statusColors[project.status]} label={statusLabels[project.status]} size="small" />
               {project.stale && !archived ? <Chip color="warning" label="Stale" size="small" variant="outlined" /> : null}
+              {project.role !== 'OWNER' ? <Chip label={`Shared by ${project.ownerName}`} size="small" variant="outlined" /> : project.shared ? <Chip label="Shared" size="small" variant="outlined" /> : null}
             </Stack>
             <Typography color="text.secondary" noWrap sx={{ mt: 0.75 }} variant="body2">
               {project.description || 'No description yet'}
@@ -122,6 +129,7 @@ function ProjectCard({
                 </IconButton>
               </Tooltip>
             ) : null}
+            {canOrganize || (archived && projectCan(project, 'archive')) ? (
             <Tooltip title={archived ? 'Restore project' : 'Archive project'}>
               <IconButton
                 aria-label={archived ? `Restore ${project.name}` : `Archive ${project.name}`}
@@ -139,6 +147,7 @@ function ProjectCard({
                 {archived ? <RestoreFromTrashOutlinedIcon fontSize="small" /> : <ArchiveOutlinedIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
+            ) : null}
           </Stack>
         </Stack>
 
@@ -146,6 +155,7 @@ function ProjectCard({
           <FormControl size="small" sx={{ minWidth: 108 }} onClick={(event) => event.stopPropagation()}>
             <Select
               aria-label={`Set status for ${project.name}`}
+              disabled={!canOrganize}
               sx={{ fontSize: 12, height: 30 }}
               value={project.status}
               variant="standard"
@@ -159,6 +169,7 @@ function ProjectCard({
           <FormControl size="small" sx={{ minWidth: 102 }} onClick={(event) => event.stopPropagation()}>
             <Select
               aria-label={`Set priority for ${project.name}`}
+              disabled={!canOrganize}
               sx={{ fontSize: 12, height: 30 }}
               value={project.priority}
               variant="standard"
@@ -190,7 +201,7 @@ function ProjectCard({
             Archived {project.archivedAt ? formatDate(project.archivedAt) : 'without a date'}
             {project.archiveReason ? ` - ${project.archiveReason}` : ''}
           </Typography>
-        ) : project.status !== 'ACTIVE' ? (
+        ) : project.status !== 'ACTIVE' && canOrganize ? (
           <Button
             size="small"
             sx={{ mt: 1.5, px: 0.5 }}
@@ -224,6 +235,7 @@ export function ProjectDashboard({
   onArchiveProject,
   onRestoreProject,
   onUpdateOrganization,
+  onToggleFavorite,
 }: ProjectDashboardProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [sortOrder, setSortOrder] = useState<SortOrder>('activity')
@@ -346,6 +358,7 @@ export function ProjectDashboard({
                 onRestore={() => onRestoreProject(project)}
                 onSelect={() => onSelectProject(project.id)}
                 onUpdateOrganization={(input) => onUpdateOrganization(project.id, input)}
+                onToggleFavorite={(favorite) => onToggleFavorite(project.id, favorite)}
                 project={project}
               />
             ))}

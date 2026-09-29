@@ -2,6 +2,7 @@ package com.devhub.backend.repository;
 
 import com.devhub.backend.model.Project;
 import com.devhub.backend.model.ProjectLink;
+import com.devhub.backend.model.ProjectRole;
 import com.devhub.backend.model.ProjectStatus;
 import com.devhub.backend.security.CurrentUser;
 import java.sql.PreparedStatement;
@@ -20,14 +21,22 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class ProjectRepository {
 
+	// The two placeholders are the current user: their membership and their personal favorite.
 	private static final String SELECT_COLUMNS = """
-			SELECT p.id, p.name, p.description, p.status, p.priority, p.favorite,
+			SELECT p.id, p.name, p.description, p.status, p.priority, COALESCE(us.favorite, FALSE) AS favorite,
 					p.repository_url, p.deployment_url, p.progress_summary, p.next_step, p.blockers,
 					p.start_command, p.build_command, p.technical_decisions, p.context_updated_at,
-					p.status_before_archive, p.archived_at, p.archive_reason, p.created_at, p.updated_at, rm.last_commit_at
+					p.status_before_archive, p.archived_at, p.archive_reason, p.created_at, p.updated_at, rm.last_commit_at,
+					m.role AS member_role, COALESCE(NULLIF(o.display_name, ''), o.username) AS owner_name,
+					EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id) AS has_members
 				FROM projects p
+				JOIN app_users o ON o.id = p.owner_id
 				LEFT JOIN repository_metadata rm ON rm.project_id = p.id
+				LEFT JOIN project_members m ON m.project_id = p.id AND m.user_id = ?
+				LEFT JOIN project_user_settings us ON us.project_id = p.id AND us.user_id = ?
 			""";
+
+	private static final String VISIBLE = " (p.owner_id = ? OR m.user_id IS NOT NULL)";
 
 	private final JdbcTemplate jdbcTemplate;
 	private final CurrentUser currentUser;
@@ -85,19 +94,26 @@ public class ProjectRepository {
 
 	public List<Project> findAll(boolean archived) {
 		String filter = archived ? " AND p.status = 'ARCHIVED'" : " AND p.status <> 'ARCHIVED'";
+		long me = currentUser.id();
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE p.owner_id = ?" + filter + " ORDER BY p.favorite DESC, p.priority DESC, COALESCE(rm.last_commit_at, p.context_updated_at, p.created_at) DESC, p.id DESC",
+				SELECT_COLUMNS + " WHERE" + VISIBLE + filter + " ORDER BY COALESCE(us.favorite, FALSE) DESC, p.priority DESC, COALESCE(rm.last_commit_at, p.context_updated_at, p.created_at) DESC, p.id DESC",
 				this::mapRow,
-				currentUser.id()
+				me,
+				me,
+				me
 		).stream().map(this::withLinks).toList();
 	}
 
+	/** A project the current user owns or is a member of. */
 	public Optional<Project> findById(long id) {
+		long me = currentUser.id();
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE p.id = ? AND p.owner_id = ?",
+				SELECT_COLUMNS + " WHERE p.id = ? AND" + VISIBLE,
 				this::mapRow,
+				me,
+				me,
 				id,
-				currentUser.id()
+				me
 		).stream().findFirst().map(this::withLinks);
 	}
 
@@ -124,14 +140,30 @@ public class ProjectRepository {
 		return updated;
 	}
 
-	public int updateOrganization(long id, ProjectStatus status, int priority, boolean favorite) {
+	public int updateOrganization(long id, ProjectStatus status, int priority) {
 		return jdbcTemplate.update(
-			"UPDATE projects SET status = ?, priority = ?, favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+			"UPDATE projects SET status = ?, priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
 				status.name(),
 				priority,
-				favorite,
 				id,
 				currentUser.id()
+		);
+	}
+
+	/** The favorite mark belongs to the current user, not to the project. */
+	public void setFavorite(long projectId, boolean favorite) {
+		long me = currentUser.id();
+		jdbcTemplate.update(
+				"INSERT INTO project_user_settings (project_id, user_id, favorite) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+				projectId,
+				me,
+				favorite
+		);
+		jdbcTemplate.update(
+				"UPDATE project_user_settings SET favorite = ? WHERE project_id = ? AND user_id = ?",
+				favorite,
+				projectId,
+				me
 		);
 	}
 
@@ -145,15 +177,14 @@ public class ProjectRepository {
 			String technicalDecisions
 	) {
 		return jdbcTemplate.update(
-			"UPDATE projects SET progress_summary = ?, next_step = ?, blockers = ?, start_command = ?, build_command = ?, technical_decisions = ?, context_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+			"UPDATE projects SET progress_summary = ?, next_step = ?, blockers = ?, start_command = ?, build_command = ?, technical_decisions = ?, context_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
 				progressSummary,
 				nextStep,
 				blockers,
 				startCommand,
 				buildCommand,
 				technicalDecisions,
-				id,
-				currentUser.id()
+				id
 		);
 	}
 
@@ -228,7 +259,10 @@ public class ProjectRepository {
 				project.createdAt(),
 				project.updatedAt(),
 				project.effectiveActivityAt(),
-				project.stale()
+				project.stale(),
+				project.role(),
+				project.ownerName(),
+				project.shared()
 		);
 	}
 
@@ -236,6 +270,8 @@ public class ProjectRepository {
 		Instant createdAt = resultSet.getTimestamp("created_at").toInstant();
 		Instant contextUpdatedAt = toInstant(resultSet.getTimestamp("context_updated_at"));
 		Instant repositoryActivityAt = toInstant(resultSet.getTimestamp("last_commit_at"));
+		String memberRole = resultSet.getString("member_role");
+		ProjectRole role = memberRole == null ? ProjectRole.OWNER : ProjectRole.valueOf(memberRole);
 		Instant effectiveActivityAt = createdAt;
 		if (contextUpdatedAt != null && contextUpdatedAt.isAfter(effectiveActivityAt)) {
 			effectiveActivityAt = contextUpdatedAt;
@@ -266,7 +302,10 @@ public class ProjectRepository {
 				createdAt,
 				resultSet.getTimestamp("updated_at").toInstant(),
 				effectiveActivityAt,
-				effectiveActivityAt.isBefore(Instant.now().minusSeconds(staleProjectDays * 86400L))
+				effectiveActivityAt.isBefore(Instant.now().minusSeconds(staleProjectDays * 86400L)),
+				role,
+				resultSet.getString("owner_name"),
+				role != ProjectRole.OWNER || resultSet.getBoolean("has_members")
 		);
 	}
 

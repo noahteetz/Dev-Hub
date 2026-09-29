@@ -16,7 +16,8 @@ import org.springframework.stereotype.Repository;
 public class CodeSnippetRepository {
 
 	private static final String SELECT_COLUMNS = """
-			SELECT id, project_id, title, language, source_code, created_at, updated_at
+			SELECT id, project_id, title, language, source_code, created_at, updated_at,
+					(SELECT COALESCE(NULLIF(u.display_name, ''), u.username) FROM app_users u WHERE u.id = code_snippets.created_by) AS created_by_name
 			FROM code_snippets
 			""";
 
@@ -28,19 +29,21 @@ public class CodeSnippetRepository {
 		this.currentUser = currentUser;
 	}
 
-	public CodeSnippet create(long projectId, String title, String language, String code) {
-		long ownerId = currentUser.id();
+	/** The snippet belongs to the project owner's data; the current user is recorded as its author. */
+	public CodeSnippet create(long ownerId, long projectId, String title, String language, String code) {
+		long authorId = currentUser.id();
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO code_snippets (owner_id, project_id, title, language, source_code) VALUES (?, ?, ?, ?, ?)",
+					"INSERT INTO code_snippets (owner_id, created_by, project_id, title, language, source_code) VALUES (?, ?, ?, ?, ?, ?)",
 					new String[]{"id"}
 			);
 			statement.setLong(1, ownerId);
-			statement.setLong(2, projectId);
-			statement.setString(3, title);
-			statement.setString(4, language);
-			statement.setString(5, code);
+			statement.setLong(2, authorId);
+			statement.setLong(3, projectId);
+			statement.setString(4, title);
+			statement.setString(5, language);
+			statement.setString(6, code);
 			return statement;
 		}, keyHolder);
 
@@ -55,20 +58,18 @@ public class CodeSnippetRepository {
 
 	public List<CodeSnippet> findAllByProjectId(long projectId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND owner_id = ? ORDER BY id DESC",
+				SELECT_COLUMNS + " WHERE project_id = ? ORDER BY id DESC",
 				CodeSnippetRepository::mapRow,
-				projectId,
-				currentUser.id()
+				projectId
 		);
 	}
 
 	public Optional<CodeSnippet> findById(long projectId, long snippetId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND id = ? AND owner_id = ?",
+				SELECT_COLUMNS + " WHERE project_id = ? AND id = ?",
 				CodeSnippetRepository::mapRow,
 				projectId,
-				snippetId,
-				currentUser.id()
+				snippetId
 		).stream().findFirst();
 	}
 
@@ -77,23 +78,21 @@ public class CodeSnippetRepository {
 				"""
 				UPDATE code_snippets
 				SET title = ?, language = ?, source_code = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE project_id = ? AND id = ? AND owner_id = ?
+				WHERE project_id = ? AND id = ?
 				""",
 				title,
 				language,
 				code,
 				projectId,
-				snippetId,
-				currentUser.id()
+				snippetId
 		);
 	}
 
 	public int delete(long projectId, long snippetId) {
 		return jdbcTemplate.update(
-				"DELETE FROM code_snippets WHERE project_id = ? AND id = ? AND owner_id = ?",
+				"DELETE FROM code_snippets WHERE project_id = ? AND id = ?",
 				projectId,
-				snippetId,
-				currentUser.id()
+				snippetId
 		);
 	}
 
@@ -105,7 +104,8 @@ public class CodeSnippetRepository {
 				resultSet.getString("language"),
 				resultSet.getString("source_code"),
 				resultSet.getTimestamp("created_at").toInstant(),
-				resultSet.getTimestamp("updated_at").toInstant()
+				resultSet.getTimestamp("updated_at").toInstant(),
+				resultSet.getString("created_by_name")
 		);
 	}
 }

@@ -12,6 +12,7 @@ public record Idea(
 		Long convertedTodoId,
 		List<Tag> tags,
 		Instant createdAt,
-		Instant updatedAt
+		Instant updatedAt,
+		String createdBy
 ) {
 }

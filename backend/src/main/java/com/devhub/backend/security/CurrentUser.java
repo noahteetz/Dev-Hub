@@ -71,7 +71,12 @@ public class CurrentUser {
 			if (!StringUtils.hasText(token.getSubject())) {
 				throw new AccessDeniedException("The access token carries no subject");
 			}
-			return users.resolve(token.getSubject(), token.getClaimAsString("preferred_username"));
+			return users.resolve(
+					token.getSubject(),
+					token.getClaimAsString("preferred_username"),
+					token.getClaimAsString("name"),
+					token.getClaimAsString("email")
+			);
 		}
 		if (!properties.isEnabled()) {
 			return users.resolve(LOCAL_SUBJECT, LOCAL_SUBJECT);

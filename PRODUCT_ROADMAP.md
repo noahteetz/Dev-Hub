@@ -133,6 +133,8 @@ Remote-Workspaces sind ein eigenstaendiger Ausbau nach dem lokalen Produktkern.
 - Isolierten Workspace pro Arbeitssitzung erstellen
 - Browser-Terminal im Projektbereich oeffnen
 - Claude CLI, Codex CLI und normale Shell-Prozesse starten
+- Jeder Nutzer meldet sich mit seinem eigenen Claude- bzw. ChatGPT-Account im Terminal an; der Login bleibt ueber Sessions hinweg erhalten
+- Pro Nutzer mehrere Accounts (Profile) je Anbieter verwalten und beim Terminalstart waehlen
 - Laufende Prozesse, Status und Ressourcenverbrauch anzeigen
 - Aenderungen pruefen, committen und pushen
 - Workspace bewusst beenden
@@ -144,6 +146,13 @@ Erforderliche technische Leitplanken:
 
 - Prozess- oder Container-Isolation
 - Authentifizierung und Autorisierung
+- Feature nur mit Realm-Rolle `devhub-workspace`, geprueft in REST und WebSocket-Handshake (kurzlebiges Ticket, da Browser-WebSockets keinen `Authorization`-Header setzen)
+- KI-Logins pro Nutzer und Profil in einem persistenten Volume unter `/data/users/{userId}/{provider}/{profileId}`, Zugriff `0600`, nie in der Datenbank
+- `CLAUDE_CONFIG_DIR` bzw. `CODEX_HOME` beim Terminalstart auf das gewaehlte Profil setzen; in den Container wird nur das Profil des eigenen Nutzers gemountet
+- Ein Container pro Arbeitssitzung; das Profil-Volume ueberlebt den Container, ein neuer Container mountet dasselbe Profil und der Login bleibt bestehen
+- Ein Accountwechsel waehlt ein anderes Profilverzeichnis, es werden keine Dateien getauscht oder ueberschrieben
+- Login laeuft im Terminal selbst (`claude`/`/login`, `codex login --device-auth`); das Backend proxied keinen OAuth-Flow und sammelt keine Token ein
+- Kein gemeinsames Server-Abo fuer mehrere Nutzer (Nutzungsbedingungen, Rate-Limits)
 - Sichere SSH-Key- und Secret-Verwaltung
 - CPU-, Arbeitsspeicher-, Laufzeit- und Speicherlimits
 - Nachvollziehbare Lebenszyklen fuer Sessions
@@ -158,6 +167,19 @@ Erforderliche technische Leitplanken:
 - Aenderungen vor dem Aufraeumen pruefen und zusammenfuehren
 - Alle Sessions eines Projekts kontrolliert abschliessen
 - Worktrees, Branches und temporaere Repository-Daten verlaesslich bereinigen
+
+### 12. Geteilte Projekte
+
+Ein Projekt kann mit anderen Dev-Hub-Nutzern geteilt werden. Der Owner vergibt pro Mitglied eine Rolle.
+
+- Mitglieder mit der Rolle `VIEWER` oder `EDITOR` hinzufuegen, Rolle aendern und entfernen
+- `VIEWER` sehen das Projekt mit allen Inhalten, aendern aber nichts
+- `EDITOR` pflegen Inhalte und Arbeitskontext, aber keine Stammdaten
+- Archivieren, Loeschen, Stammdaten, Repository und Mitglieder bleiben beim Owner
+- Mitglieder koennen ein Projekt selbst verlassen
+- Favoriten sind pro Nutzer, nicht pro Projekt
+- Geteilte Projekte sind im Dashboard, in der Seitenleiste und in der Suche erkennbar
+- Bei Inhalten ist sichtbar, wer sie erstellt hat
 
 ## Implementierungsreihenfolge
 
@@ -458,6 +480,7 @@ Ziel: Ein Projekt kann temporaer und sicher ueber den Browser bearbeitet werden.
 - Server-Agent fuer Workspace-Lebenszyklen entwickeln
 - Isolierte Arbeitsumgebung und Browser-Terminal bereitstellen
 - Git-Credentials und Secrets sicher handhaben
+- Persistente KI-Profile pro Nutzer (Claude, Codex) einbinden; Profilwechsel per Auswahl beim Terminalstart
 - Commit- und Push-Ablauf integrieren
 - Loeschschutz und kontrolliertes Aufraeumen umsetzen
 - Ressourcenlimits und automatische Bereinigung einfuehren
@@ -475,6 +498,16 @@ Ziel: Mehrere isolierte Arbeitsstroeme koennen sicher parallel laufen.
 - Vollstaendige Bereinigung automatisiert testen
 
 **Fertig, wenn:** Mehrere Agents parallel arbeiten koennen und alle erzeugten Ressourcen nachvollziehbar zusammengefuehrt oder sicher entfernt werden.
+
+### Erweiterung: Geteilte Projekte
+
+Ziel: Ein Projekt kann gezielt mit anderen Nutzern gelesen oder gemeinsam gepflegt werden, ohne die Isolation aller uebrigen Daten aufzuweichen.
+
+Die Erweiterung haengt nicht von Phase 5 bis 8 ab. Sie baut auf der Mehrbenutzer-Grundlage aus `V6__multi_user.sql` auf. Details stehen im Abschnitt "Konkreter Implementierungsplan fuer geteilte Projekte".
+
+**Fertig, wenn:** Ein Owner ein Projekt mit einem zweiten Nutzer als `VIEWER` oder `EDITOR` teilen kann, beide Rollen genau die vereinbarten Rechte haben und fuer Nicht-Mitglieder nichts sichtbar wird.
+
+**Stand:** Umgesetzt mit Migration `V7__shared_projects.sql`, `ProjectAccessService`, der Mitglieder-API und der Rechtematrix in `SharedProjectsHttpTests`. Das Rollenmodell steht im README.
 
 ## Konkreter Implementierungsplan fuer Phase 3 und 4
 
@@ -720,9 +753,142 @@ Bei einer einzelnen entwickelnden Person sind fuer Phase 3 etwa 12-14 und fuer P
 - Automatisches Speichern mit Konfliktschutz ist erfahrungsgemaess aufwendiger als der Editor selbst.
 - Die portable Suche ist bewusst einfach; wenn sie sich im Alltag als zu ungenau erweist, faellt der Wechsel auf `tsvector` frueher an als geplant.
 
+## Konkreter Implementierungsplan fuer geteilte Projekte
+
+### Ausgangslage
+
+- Seit `V6__multi_user.sql` ist Dev Hub mehrbenutzerfaehig, aber strikt isoliert. Jede Abfrage filtert auf `owner_id = CurrentUser.id()`.
+- Inhaltstabellen haengen ueber den Fremdschluessel `(project_id, owner_id) -> projects(id, owner_id)` am Projekt. Ein Inhalt muss also immer dem Owner des Projekts gehoeren.
+- `app_users` enthaelt nur Nutzer, die sich mindestens einmal angemeldet haben. Ein weiteres Nutzerverzeichnis gibt es nicht.
+- Hintergrundarbeit wie der Repository-Auto-Sync laeuft ueber `CurrentUser.runAs(ownerId, ...)` mit dem Git-Token des Owners.
+
+### Rollen und Rechte
+
+| Aktion | VIEWER | EDITOR | OWNER |
+|---|:-:|:-:|:-:|
+| Projekt, Arbeitskontext, Inhalte, Repository-Metadaten und Verknuepfungen lesen; Projekt in Dashboard und Suche | ja | ja | ja |
+| Eigenen Favoriten setzen | ja | ja | ja |
+| Projekt verlassen | ja | ja | - |
+| Notizen, Snippets, Ideen und Todos anlegen, bearbeiten, loeschen; Todos abschliessen; Idee in Todo umwandeln | - | ja | ja |
+| Arbeitskontext pflegen | - | ja | ja |
+| Tags und Verknuepfungen an Projektinhalten setzen | - | ja | ja |
+| Eigene Eingangs-Eintraege dem Projekt zuordnen | - | ja | ja |
+| Idee aus dem Projekt in ein eigenes neues Projekt umwandeln | - | ja | ja |
+| Stammdaten aendern: Name, Beschreibung, Links, Status, Prioritaet | - | - | ja |
+| Inhalte aus dem Projekt herausloesen | - | - | ja |
+| Repository verbinden und Aktualisierung ausloesen | - | - | ja |
+| Mitglieder verwalten | - | - | ja |
+| Archivieren, wiederherstellen, loeschen | - | - | ja |
+
+### Getroffene Entscheidungen
+
+- **Zwei Rollen.** `VIEWER` und `EDITOR` reichen. Eine Zwischenrolle fuer Stammdaten oder Mitgliederverwaltung kommt nur bei konkretem Bedarf.
+- **Stammdaten bleiben beim Owner.** Auch ein `EDITOR` aendert weder Name, Beschreibung, Links, Status noch Prioritaet.
+- **Favoriten sind persoenlich.** `favorite` wandert aus `projects` in eine Tabelle pro Nutzer und Projekt.
+- **Nutzer werden exakt gesucht.** Ein Mitglied wird ueber den exakten Username oder die E-Mail aus `app_users` gefunden. Es gibt keine Liste und keine Teiltreffer, damit keine Nutzer aufgezaehlt werden koennen. Nur wer sich schon einmal angemeldet hat, kann hinzugefuegt werden.
+- **Repository-Aktualisierung nur durch den Owner.** Ausloesen darf sie nur der Owner, zusaetzlich laeuft der Auto-Sync wie bisher mit dem Token des Owners. Mitglieder sehen den zwischengespeicherten Stand. Ein Mitglied loest nie eine Anfrage mit dem Token eines anderen Nutzers aus.
+- **Verknuepfungen ueber Nutzergrenzen sind erlaubt.** Sie werden nur angezeigt, wenn der Betrachter beide Enden sehen darf.
+- **Idee in eigenes Projekt umwandeln.** Ein `EDITOR` darf aus einer Idee eines geteilten Projekts ein eigenes Projekt anlegen. Das neue Projekt gehoert ihm. Die Idee bleibt im geteilten Projekt und wird mit dem neuen Projekt verknuepft, weil nur der Owner Inhalte herausloesen darf.
+- **Herausloesen nur durch den Owner.** Ein aus einem geteilten Projekt geloester Eintrag landet im Eingang des Owners.
+
+### Technische Leitlinien
+
+- **`owner_id` bedeutet Datenbesitz.** Inhalte eines Projekts gehoeren immer dem Projekt-Owner, damit der bestehende zusammengesetzte Fremdschluessel gueltig bleibt. Wer einen Eintrag verfasst hat, steht in einer neuen Spalte `created_by`.
+- **Kein `runAs(owner)` fuer Nutzeraktionen.** Sonst gingen der Verfasser und die Trennung der Git-Tokens verloren. Repositories erhalten den Datenbesitzer als expliziten Parameter, `CurrentUser.id()` bleibt immer der handelnde Nutzer.
+- **Eine zentrale Rechtepruefung.** `ProjectAccessService.require(projectId, Permission)` liefert Owner und Rolle oder bricht ab. Kein Controller prueft Rollen selbst.
+- **Keine Existenzhinweise.** Nicht-Mitglieder erhalten `404`, Mitglieder ohne ausreichende Rolle `403`.
+- **Der Owner steht nicht in `project_members`.** `projects.owner_id` bleibt die einzige Quelle fuer die Eigentuemerschaft.
+- **Tags im Namensraum des Owners.** Inhalte eines geteilten Projekts verwenden die Tags des Projekt-Owners. Tag-Vorschlaege im Projekt kommen aus diesem Namensraum.
+- **Eingang bleibt privat.** Eintraege ohne Projekt sieht weiterhin nur ihr Besitzer.
+
+### S1 - Datenmodell
+
+Migration `V7`:
+
+1. Tabelle `project_members` mit `project_id`, `user_id`, `role`, `added_by` und `created_at`
+   - Primaerschluessel `(project_id, user_id)`
+   - Fremdschluessel auf `projects` mit `ON DELETE CASCADE`
+   - Index auf `user_id` fuer "mit mir geteilt"
+2. Tabelle `project_user_settings` mit `project_id`, `user_id` und `favorite`; bestehende Favoriten werden fuer den jeweiligen Owner uebernommen, danach entfaellt `projects.favorite`
+3. Spalte `created_by` auf `notes`, `code_snippets`, `ideas` und `todos`, befuellt mit dem bisherigen `owner_id`
+4. Spalten `display_name` und `email` auf `app_users`, gepflegt beim Login aus den Token-Claims
+
+**Tests:** Die Migration laeuft auf leerer und befuellter Datenbank sowie auf H2 und PostgreSQL. Bestehende Favoriten und Inhalte bleiben unveraendert.
+
+### S2 - Zugriffsschicht
+
+- Enum `ProjectRole` mit `VIEWER` und `EDITOR`
+- Enum `Permission` mit `READ`, `WRITE_CONTENT`, `EDIT_CONTEXT`, `EDIT_METADATA`, `MANAGE_MEMBERS`, `MANAGE_REPOSITORY`, `ARCHIVE`, `DELETE`, `DETACH_CONTENT` und fester Zuordnung zu den Rollen
+- `ProjectAccessService.require(...)` liefert `ProjectAccess(ownerId, role)`
+- `ProjectRepository` liefert eigene und geteilte Projekte mit `role`, `ownerName`, `shared` und persoenlichem `favorite`
+- Die projektbezogenen Repositories erhalten den Datenbesitzer als Parameter; Anlegen setzt `created_by = CurrentUser.id()`
+- Alle Routen unter `/api/projects/{projectId}/**` pruefen ueber `require(...)`
+- `PATCH /api/projects/{id}/organization` bleibt fuer Status und Prioritaet dem Owner vorbehalten; der Favorit bekommt einen eigenen Endpunkt, den jedes Mitglied nutzen darf
+
+**Tests:** Eine parametrisierte Rechtematrix Rolle mal Endpunkt mal erwarteter Status, aufbauend auf `MultiUserHttpTests` mit drei Nutzern.
+
+### S3 - Mitglieder-API und Nutzersuche
+
+- `GET /api/users/lookup?query=` liefert genau einen Treffer ueber exakten Username oder exakte E-Mail oder `404`
+- `GET /api/projects/{id}/members` fuer alle Mitglieder lesbar
+- `POST /api/projects/{id}/members` mit `userId` und `role`, nur Owner
+- `PATCH /api/projects/{id}/members/{userId}` aendert die Rolle, nur Owner
+- `DELETE /api/projects/{id}/members/{userId}` entfernt ein Mitglied, nur Owner
+- `DELETE /api/projects/{id}/members/me` zum Verlassen
+- Regeln: sich selbst oder den Owner hinzufuegen liefert `400`, ein bereits vorhandenes Mitglied `409`
+
+**Tests:** Ein entferntes Mitglied verliert sofort jeden Zugriff; seine bisher erstellten Inhalte bleiben im Projekt.
+
+### S4 - Querschnitt
+
+- **Suche:** `owner_id = ?` wird ersetzt durch "Eintrag im eigenen Eingang oder Projekt ist zugaenglich".
+- **Zentrale Listen:** `GlobalContentRepository` zeigt Inhalte aus geteilten Projekten, Eingangs-Eintraege weiterhin nur dem Besitzer.
+- **Zuordnung:** Ein `EDITOR` ordnet eigene Eingangs-Eintraege einem geteilten Projekt zu; `owner_id` wechselt dabei auf den Projekt-Owner, `created_by` bleibt. Herausloesen erfordert `DETACH_CONTENT` und legt den Eintrag in den Eingang des Owners.
+- **Idee umwandeln:** `promote` fuer Ideen aus geteilten Projekten legt ein Projekt des Aufrufers an, kopiert Titel und Beschreibung und verknuepft beide, ohne die Idee zu verschieben.
+- **Tags:** Tag-Endpunkte im Projektkontext liefern die Tags des Projekt-Owners.
+- **Verknuepfungen:** Rueckverweise werden nach Sichtbarkeit beider Enden gefiltert.
+- **Repository:** Lesen fuer alle Mitglieder, Aktualisieren und Verbinden nur fuer den Owner. Der Auto-Sync bleibt unveraendert.
+
+**Tests:** Die Suche liefert Nicht-Mitgliedern keine Treffer aus fremden Projekten; eine Verknuepfung auf ein nicht sichtbares Ziel erscheint nicht.
+
+### S5 - Frontend
+
+- Typen `ProjectRole` und `ProjectMember`; `Project` erhaelt `role`, `ownerName` und `shared`
+- Seitenleiste und Dashboard kennzeichnen geteilte Projekte und zeigen einen Bereich "Mit mir geteilt"
+- Dialog fuer Mitglieder: Nutzer ueber exakten Username oder E-Mail suchen, Rolle waehlen, Rolle aendern, entfernen; nur fuer den Owner bearbeitbar
+- Aktion "Projekt verlassen" fuer Mitglieder
+- Aktionen richten sich nach der Rolle: `VIEWER` sehen keine Bearbeitungsaktionen, `EDITOR` keine Stammdaten-, Archiv-, Repository- und Mitgliederaktionen; die Kommandoleiste filtert entsprechend
+- Bei Eintraegen wird der Verfasser angezeigt
+- Eine `403` auf Projektebene zeigt eine eigene Meldung statt des Hinweises auf die fehlende Keycloak-Rolle
+
+**Tests:** Rollenabhaengige Sichtbarkeit von Aktionen, Mitglieder-Dialog und Verlassen.
+
+### S6 - Abschluss
+
+- Backend-Gesamttest, Frontend-Tests, Lint und Produktions-Build als Release-Gate
+- Migration gegen einen PostgreSQL-Container mit Bestandsdaten pruefen
+- Kurze Dokumentation des Rollenmodells im README
+
+**Abnahme geteilte Projekte**
+
+1. Ein Owner teilt ein Projekt ueber den exakten Username eines zweiten Nutzers und vergibt eine Rolle.
+2. Ein `VIEWER` sieht alle Projektinhalte, jeder Schreibversuch liefert `403`.
+3. Ein `EDITOR` pflegt Inhalte und Arbeitskontext, kann aber weder Stammdaten aendern noch archivieren, loeschen, das Repository aktualisieren oder Mitglieder verwalten.
+4. Ein Nicht-Mitglied erhaelt auf alle Projektrouten `404` und findet in der Suche nichts aus dem Projekt.
+5. Favoriten eines Mitglieds beeinflussen die Ansicht anderer Nutzer nicht.
+6. Nach dem Entfernen eines Mitglieds bleiben dessen Inhalte im Projekt, der Zugriff endet sofort.
+7. Alle Backend-Tests, Frontend-Tests, Lint und Produktions-Build laufen erfolgreich.
+
+**Groesste Unsicherheiten**
+
+- Die Umstellung aller projektbezogenen Repositories auf einen expliziten Datenbesitzer beruehrt jede Inhaltsabfrage. Die Rechtematrix-Tests muessen vor dem Umbau stehen.
+- Tags im Namensraum des Owners koennen fuer `EDITOR` ueberraschend sein, wenn sie eigene gleichnamige Tags haben.
+- Die exakte Nutzersuche setzt voraus, dass sich das neue Mitglied bereits einmal angemeldet hat.
+
 ## Bewusst nicht im ersten Umfang
 
-- Team-, Rollen- und Organisationsverwaltung
+- Team- und Organisationsverwaltung sowie Rollen ueber `VIEWER` und `EDITOR` pro Projekt hinaus
+- Einladungen per Link oder E-Mail, Owner-Wechsel und Benachrichtigungen fuer geteilte Projekte
 - Sprints, Story Points und umfangreiche Kanban-Prozesse
 - Zeiterfassung
 - Automatische KI-Priorisierung ohne nachvollziehbare Grundlage

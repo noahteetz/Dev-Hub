@@ -13,6 +13,11 @@ public class ApiExceptionHandler {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError(exception.getMessage()));
 	}
 
+	@ExceptionHandler(ForbiddenException.class)
+	public ResponseEntity<ApiError> handleForbidden(ForbiddenException exception) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError(exception.getMessage()));
+	}
+
 	@ExceptionHandler(InvalidRequestException.class)
 	public ResponseEntity<ApiError> handleInvalidRequest(InvalidRequestException exception) {
 		return ResponseEntity.badRequest().body(new ApiError(exception.getMessage()));

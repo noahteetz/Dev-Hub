@@ -12,6 +12,7 @@ public record Todo(
 		Instant completedAt,
 		List<Tag> tags,
 		Instant createdAt,
-		Instant updatedAt
+		Instant updatedAt,
+		String createdBy
 ) {
 }

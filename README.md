@@ -46,8 +46,39 @@ Local development runs with `DEVHUB_AUTH_ENABLED=false`, so `npm run dev` needs
 no identity provider. Set it to `true` and fill in the realm to exercise the
 real login; the `dev-hub-frontend` client already allows `http://localhost:5173`.
 
-Dev Hub stores no owner per record. Every account in the realm that holds
-`devhub-user` sees the same data.
+Every account has its own data: each row belongs to the account that created it, and nobody sees another
+account's projects unless the owner shares them (see below). Everything that existed before multi-user support
+belongs to the account named by `DEVHUB_LEGACY_OWNER_SUBJECT`.
+
+## Sharing projects
+
+The owner of a project can add other Dev Hub users to it under Share in the project header. A member is found
+by the exact username or e-mail; there is no listing and no partial match, and the person has to have signed in
+to Dev Hub once before. Every member has one of two roles:
+
+| Action | Viewer | Editor | Owner |
+| --- | :-: | :-: | :-: |
+| Read the project, its context, entries, repository data, and links | yes | yes | yes |
+| Mark the project as a favorite (personal, others do not see it) | yes | yes | yes |
+| Leave the project | yes | yes | - |
+| Create, change, and delete notes, snippets, ideas, and todos; complete todos | - | yes | yes |
+| Edit the resume context, link entries, file own inbox entries into the project | - | yes | yes |
+| Start an own project from an idea of the shared project | - | yes | yes |
+| Change name, description, links, status, and priority | - | - | yes |
+| Connect or refresh the repository, take entries out of the project | - | - | yes |
+| Manage members, archive, restore, delete | - | - | yes |
+
+A few rules follow from that:
+
+- Content of a project belongs to the owner's data. The author of each entry is stored separately and shown in
+  the project, so removing a member keeps what they wrote.
+- Entries of a shared project use the tags of the owner.
+- Only the owner refreshes the repository, and the hourly sync runs with the owner's Git token. Members read the
+  cached state and never cause a request with somebody else's token.
+- A person without a role gets `404` for the project, a member whose role is too low gets `403`.
+- The inbox stays private. Filing an entry into a shared project hands it to the project; only the owner can
+  move it back to their inbox.
+- Links between entries show up for a person only if they can see both ends.
 
 ## Appearance
 
@@ -115,11 +146,14 @@ An open browser tab picks the new data up when it comes back into focus, at most
 The backend exposes CRUD endpoints for projects and their stored information:
 
 - `/api/projects`
+- `/api/projects/{projectId}/members`, `/api/projects/{projectId}/members/{userId}` and `/api/projects/{projectId}/members/me` for sharing
+- `/api/projects/{projectId}/favorite` for the personal favorite mark
+- `/api/users/lookup?query=` to find one account by exact username or e-mail
 - `/api/projects/{projectId}/notes`
 - `/api/projects/{projectId}/code-snippets`
 - `/api/projects/{projectId}/ideas`
 - `/api/projects/{projectId}/todos`
-- `/api/tags`
+- `/api/tags`, or `/api/tags?projectId=` for the tags of a project's owner
 - `/api/git-credentials` and `/api/git-credentials/{provider}` for stored provider tokens
 - `/api/git-repositories`, `/api/git-repositories/owners` and `/api/git-repositories/import` for the picker
 

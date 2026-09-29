@@ -19,10 +19,12 @@ import type { EntityType, ReferenceGroup } from '../types'
 interface EntryReferencesProps {
   type: EntityType
   id: number
+  /** Hides linking and unlinking, for entries the user may only read. */
+  readOnly?: boolean
 }
 
 /** Outgoing links and backlinks of one entry. Links to deleted entries disappear on their own. */
-export function EntryReferences({ type, id }: EntryReferencesProps) {
+export function EntryReferences({ type, id, readOnly = false }: EntryReferencesProps) {
   const navigate = useNavigate()
   const [group, setGroup] = useState<ReferenceGroup>({ outgoing: [], incoming: [] })
   const [error, setError] = useState('')
@@ -65,9 +67,11 @@ export function EntryReferences({ type, id }: EntryReferencesProps) {
     <Box>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
         <Typography sx={{ fontWeight: 800 }}>Linked entries</Typography>
-        <Button size="small" startIcon={<LinkRoundedIcon />} onClick={() => setPickerOpen(true)}>
-          Link to entry
-        </Button>
+        {readOnly ? null : (
+          <Button size="small" startIcon={<LinkRoundedIcon />} onClick={() => setPickerOpen(true)}>
+            Link to entry
+          </Button>
+        )}
       </Stack>
       {error ? <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert> : null}
       {group.outgoing.length ? (
@@ -78,9 +82,11 @@ export function EntryReferences({ type, id }: EntryReferencesProps) {
               <Button size="small" sx={{ flex: 1, justifyContent: 'flex-start' }} onClick={() => navigate(reference.targetUrl)}>
                 {reference.targetTitle}
               </Button>
-              <IconButton aria-label={`Remove link to ${reference.targetTitle}`} size="small" onClick={() => void unlink(reference.id)}>
-                <LinkOffRoundedIcon fontSize="small" />
-              </IconButton>
+              {readOnly ? null : (
+                <IconButton aria-label={`Remove link to ${reference.targetTitle}`} size="small" onClick={() => void unlink(reference.id)}>
+                  <LinkOffRoundedIcon fontSize="small" />
+                </IconButton>
+              )}
             </Stack>
           ))}
         </Stack>

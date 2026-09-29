@@ -59,4 +59,11 @@ describe('api authentication', () => {
     await expect(api.projects.list()).rejects.toThrow(/devhub-user/)
     expect(onSessionExpired).not.toHaveBeenCalled()
   })
+
+  it('shows the server message when a project role refuses an action', async () => {
+    configureAuth({ accessToken: () => Promise.resolve('valid'), onSessionExpired: () => {} })
+    vi.mocked(fetch).mockReturnValue(respond(403, '{"message":"Your role in this project does not allow this action"}'))
+
+    await expect(api.projects.archive(1)).rejects.toThrow('Your role in this project does not allow this action')
+  })
 })

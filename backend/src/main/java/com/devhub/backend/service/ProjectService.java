@@ -8,6 +8,7 @@ import com.devhub.backend.dto.ProjectOrganizationRequest;
 import com.devhub.backend.exception.InvalidRequestException;
 import com.devhub.backend.exception.ResourceNotFoundException;
 import com.devhub.backend.model.Project;
+import com.devhub.backend.model.Permission;
 import com.devhub.backend.model.ProjectLink;
 import com.devhub.backend.model.ProjectStatus;
 import com.devhub.backend.repository.ProjectRepository;
@@ -22,13 +23,16 @@ public class ProjectService {
 
 	private final ProjectRepository projectRepository;
 	private final RepositoryMetadataRepository repositoryMetadataRepository;
+	private final ProjectAccessService access;
 
 	public ProjectService(
 			ProjectRepository projectRepository,
-			RepositoryMetadataRepository repositoryMetadataRepository
+			RepositoryMetadataRepository repositoryMetadataRepository,
+			ProjectAccessService access
 	) {
 		this.projectRepository = projectRepository;
 		this.repositoryMetadataRepository = repositoryMetadataRepository;
+		this.access = access;
 	}
 
 	@Transactional
@@ -52,13 +56,13 @@ public class ProjectService {
 	}
 
 	public Project findById(long projectId) {
-		long id = RequestValidation.requireId(projectId, "Project");
+		long id = access.require(projectId, Permission.READ).projectId();
 		return getExisting(id);
 	}
 
 	@Transactional
 	public Project update(long projectId, ProjectRequest request) {
-		long id = RequestValidation.requireId(projectId, "Project");
+		long id = access.require(projectId, Permission.EDIT_METADATA).projectId();
 		ProjectRequest body = RequestValidation.requireRequest(request);
 		Project existing = getExisting(id);
 		String repositoryUrl = RequestValidation.optionalRepositoryUrl(body.repositoryUrl(), "Repository URL");
@@ -80,24 +84,31 @@ public class ProjectService {
 
 	@Transactional
 	public Project updateOrganization(long projectId, ProjectOrganizationRequest request) {
-		long id = RequestValidation.requireId(projectId, "Project");
+		long id = access.require(projectId, Permission.EDIT_METADATA).projectId();
 		Project existing = getExisting(id);
 		ProjectOrganizationRequest body = RequestValidation.requireRequest(request);
 		ProjectStatus status = body.status() == null ? existing.status() : body.status();
 		int priority = body.priority() == null ? existing.priority() : body.priority();
-		boolean favorite = body.favorite() == null ? existing.favorite() : body.favorite();
 		if (priority < 0 || priority > 3) {
 			throw new InvalidRequestException("Project priority must be between 0 and 3");
 		}
-		if (projectRepository.updateOrganization(id, status, priority, favorite) == 0) {
+		if (projectRepository.updateOrganization(id, status, priority) == 0) {
 			throw notFound(id);
 		}
 		return getExisting(id);
 	}
 
+	/** Every member marks favorites for themselves; it changes nothing for anybody else. */
+	@Transactional
+	public Project setFavorite(long projectId, boolean favorite) {
+		long id = access.require(projectId, Permission.READ).projectId();
+		projectRepository.setFavorite(id, favorite);
+		return getExisting(id);
+	}
+
 	@Transactional
 	public Project updateContext(long projectId, ProjectContextRequest request) {
-		long id = RequestValidation.requireId(projectId, "Project");
+		long id = access.require(projectId, Permission.EDIT_CONTEXT).projectId();
 		Project existing = getExisting(id);
 		ProjectContextRequest body = RequestValidation.requireRequest(request);
 		if (projectRepository.updateContext(
@@ -116,7 +127,7 @@ public class ProjectService {
 
 	@Transactional
 	public Project archive(long projectId, ProjectArchiveRequest request) {
-		long id = RequestValidation.requireId(projectId, "Project");
+		long id = access.require(projectId, Permission.ARCHIVE).projectId();
 		Project existing = getExisting(id);
 		if (existing.status() == ProjectStatus.ARCHIVED) {
 			return existing;
@@ -128,7 +139,7 @@ public class ProjectService {
 
 	@Transactional
 	public Project restore(long projectId) {
-		long id = RequestValidation.requireId(projectId, "Project");
+		long id = access.require(projectId, Permission.ARCHIVE).projectId();
 		Project existing = getExisting(id);
 		if (existing.status() != ProjectStatus.ARCHIVED) {
 			return existing;
@@ -141,7 +152,7 @@ public class ProjectService {
 	}
 
 	public void delete(long projectId) {
-		long id = RequestValidation.requireId(projectId, "Project");
+		long id = access.require(projectId, Permission.DELETE).projectId();
 		if (projectRepository.deleteById(id) == 0) {
 			throw notFound(id);
 		}

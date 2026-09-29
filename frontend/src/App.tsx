@@ -9,6 +9,7 @@ import { NoteDialog } from './components/NoteDialog'
 import { ProjectContextDialog } from './components/ProjectContextDialog'
 import { ProjectDashboard, type DashboardView } from './components/ProjectDashboard'
 import { ProjectDialog } from './components/ProjectDialog'
+import { ProjectMembersDialog } from './components/ProjectMembersDialog'
 import { ProjectSidebar, type ApiState } from './components/ProjectSidebar'
 import { ProjectWorkspace, type WorkspaceTab } from './components/ProjectWorkspace'
 import { SnippetDialog } from './components/SnippetDialog'
@@ -131,6 +132,7 @@ function App() {
   const [ideaDialog, setIdeaDialog] = useState<IdeaDialogState>(null)
   const [todoDialog, setTodoDialog] = useState<TodoDialogState>(null)
   const [contextDialog, setContextDialog] = useState<ContextDialogState>(null)
+  const [membersDialogProjectId, setMembersDialogProjectId] = useState<number | null>(null)
   const [repository, setRepository] = useState<RepositoryConnection | null>(null)
   const [repositoryLoading, setRepositoryLoading] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null)
@@ -147,6 +149,24 @@ function App() {
   const applyProjects = useCallback((loadedProjects: Project[]) => {
     setProjects(loadedProjects)
   }, [])
+
+  // Entries of a project somebody else owns carry that owner's tags, so the suggestions follow it.
+  const scopedProject = projects.find((project) => project.id === selectedProjectId)
+  const tagScopeProjectId = scopedProject && scopedProject.role !== 'OWNER' ? scopedProject.id : null
+
+  /** Reloads both project lists without the loading state, after members or favorites changed. */
+  const refreshProjects = useCallback(async () => {
+    try {
+      const [loadedProjects, loadedArchivedProjects] = await Promise.all([
+        api.projects.list(false),
+        api.projects.list(true),
+      ])
+      applyProjects(loadedProjects)
+      setArchivedProjects(loadedArchivedProjects)
+    } catch (error) {
+      setNotice({ message: errorMessage(error), severity: 'error' })
+    }
+  }, [applyProjects])
 
   const loadProjects = useCallback(async () => {
     setApiState('loading')
@@ -193,7 +213,7 @@ function App() {
   useEffect(() => {
     let active = true
 
-    api.tags.list()
+    api.tags.list(tagScopeProjectId ?? undefined)
       .then((tags) => {
         if (active) {
           setTagOptions(tags.map((tag) => tag.name))
@@ -208,7 +228,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [tagScopeProjectId])
 
   // Picks up what the hourly background sync found while the tab was in the background,
   // so the activity order and the repository panel are current on the way back in.
@@ -258,6 +278,7 @@ function App() {
 
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? null
+  const membersProject = projects.find((project) => project.id === membersDialogProjectId) ?? null
 
   useEffect(() => {
     if (location.pathname === '/') navigate('/dashboard', { replace: true })
@@ -412,6 +433,15 @@ function App() {
       setNotice({ message: errorMessage(error), severity: 'error' })
     } finally {
       setSavingAction(null)
+    }
+  }
+
+  async function setFavorite(projectId: number, favorite: boolean) {
+    try {
+      const updated = await api.projects.setFavorite(projectId, favorite)
+      setProjects((current) => replaceItem(current, updated))
+    } catch (error) {
+      setNotice({ message: errorMessage(error), severity: 'error' })
     }
   }
 
@@ -781,6 +811,7 @@ function App() {
           onEditTodo={(todo) => setTodoDialog({ todo })}
           onConvertIdea={(idea) => void convertIdea(idea)}
           onRefreshRepository={() => void refreshRepository()}
+          onOpenMembers={() => setMembersDialogProjectId(selectedProject.id)}
           onToggleTodo={(todo) => void toggleTodo(todo)}
           onTabChange={(tab) => navigate(`/projects/${selectedProject.id}?tab=${tab}`)}
           project={selectedProject}
@@ -806,6 +837,7 @@ function App() {
             setContentLoading(true)
           }}
           onUpdateOrganization={(projectId, input) => void updateOrganization(projectId, input)}
+          onToggleFavorite={(projectId, favorite) => void setFavorite(projectId, favorite)}
           onViewChange={(view) => navigate(view === 'archived' ? '/archive' : '/dashboard')}
           view={dashboardView}
         />
@@ -848,6 +880,19 @@ function App() {
           onSubmit={saveContext}
           project={contextDialog.project}
           saving={savingAction === 'context'}
+        />
+      ) : null}
+      {membersProject ? (
+        <ProjectMembersDialog
+          project={membersProject}
+          onClose={() => setMembersDialogProjectId(null)}
+          onMembersChanged={() => void refreshProjects()}
+          onLeft={() => {
+            setMembersDialogProjectId(null)
+            navigate('/dashboard')
+            void refreshProjects()
+            setNotice({ message: 'You left the project.', severity: 'success' })
+          }}
         />
       ) : null}
       {noteDialog ? (

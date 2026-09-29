@@ -17,7 +17,8 @@ import org.springframework.stereotype.Repository;
 public class IdeaRepository {
 
 	private static final String SELECT_COLUMNS = """
-			SELECT id, project_id, title, content, converted, converted_todo_id, created_at, updated_at
+			SELECT id, project_id, title, content, converted, converted_todo_id, created_at, updated_at,
+					(SELECT COALESCE(NULLIF(u.display_name, ''), u.username) FROM app_users u WHERE u.id = ideas.created_by) AS created_by_name
 			FROM ideas
 			""";
 
@@ -29,18 +30,20 @@ public class IdeaRepository {
 		this.currentUser = currentUser;
 	}
 
-	public Idea create(long projectId, String title, String content) {
-		long ownerId = currentUser.id();
+	/** The idea belongs to the project owner's data; the current user is recorded as its author. */
+	public Idea create(long ownerId, long projectId, String title, String content) {
+		long authorId = currentUser.id();
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO ideas (owner_id, project_id, title, content) VALUES (?, ?, ?, ?)",
+					"INSERT INTO ideas (owner_id, created_by, project_id, title, content) VALUES (?, ?, ?, ?, ?)",
 					new String[]{"id"}
 			);
 			statement.setLong(1, ownerId);
-			statement.setLong(2, projectId);
-			statement.setString(3, title);
-			statement.setString(4, content);
+			statement.setLong(2, authorId);
+			statement.setLong(3, projectId);
+			statement.setString(4, title);
+			statement.setString(5, content);
 			return statement;
 		}, keyHolder);
 
@@ -54,20 +57,18 @@ public class IdeaRepository {
 
 	public List<Idea> findAllByProjectId(long projectId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND owner_id = ? ORDER BY id DESC",
+				SELECT_COLUMNS + " WHERE project_id = ? ORDER BY id DESC",
 				IdeaRepository::mapRow,
-				projectId,
-				currentUser.id()
+				projectId
 		);
 	}
 
 	public Optional<Idea> findById(long projectId, long ideaId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND id = ? AND owner_id = ?",
+				SELECT_COLUMNS + " WHERE project_id = ? AND id = ?",
 				IdeaRepository::mapRow,
 				projectId,
-				ideaId,
-				currentUser.id()
+				ideaId
 		).stream().findFirst();
 	}
 
@@ -75,24 +76,23 @@ public class IdeaRepository {
 		return jdbcTemplate.update("""
 				UPDATE ideas
 				SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE project_id = ? AND id = ? AND owner_id = ?
-				""", title, content, projectId, ideaId, currentUser.id());
+				WHERE project_id = ? AND id = ?
+				""", title, content, projectId, ideaId);
 	}
 
 	public int markConverted(long projectId, long ideaId, long todoId) {
 		return jdbcTemplate.update("""
 				UPDATE ideas
 				SET converted = TRUE, converted_todo_id = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE project_id = ? AND id = ? AND owner_id = ? AND converted = FALSE
-				""", todoId, projectId, ideaId, currentUser.id());
+				WHERE project_id = ? AND id = ? AND converted = FALSE
+				""", todoId, projectId, ideaId);
 	}
 
 	public int delete(long projectId, long ideaId) {
 		return jdbcTemplate.update(
-				"DELETE FROM ideas WHERE project_id = ? AND id = ? AND owner_id = ?",
+				"DELETE FROM ideas WHERE project_id = ? AND id = ?",
 				projectId,
-				ideaId,
-				currentUser.id()
+				ideaId
 		);
 	}
 
@@ -131,7 +131,8 @@ public class IdeaRepository {
 				resultSet.wasNull() ? null : convertedTodoId,
 				List.of(),
 				resultSet.getTimestamp("created_at").toInstant(),
-				resultSet.getTimestamp("updated_at").toInstant()
+				resultSet.getTimestamp("updated_at").toInstant(),
+				resultSet.getString("created_by_name")
 		);
 	}
 }

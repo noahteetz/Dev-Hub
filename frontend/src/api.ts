@@ -15,11 +15,14 @@ import type {
   Project,
   ProjectContextInput,
   ProjectInput,
+  ProjectMember,
   ProjectOrganizationInput,
+  ProjectRole,
   RepositoryConnection,
   Tag,
   Todo,
   TodoInput,
+  UserSummary,
   CaptureInput,
   ContentEntry,
   ContentListParams,
@@ -92,7 +95,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (response.status === 403) {
-    throw new Error('Your account is not allowed to use Dev Hub. Ask for the devhub-user role in Keycloak.')
+    // A role refusal inside a project carries a message; the login refusal from the gateway has none.
+    const forbidden = parseMessage(body)
+    throw new Error(forbidden ?? 'Your account is not allowed to use Dev Hub. Ask for the devhub-user role in Keycloak.')
   }
 
   if (!response.ok) {
@@ -120,6 +125,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 function jsonBody(value: unknown): BodyInit {
   return JSON.stringify(value)
+}
+
+function parseMessage(body: string): string | null {
+  if (!body) return null
+  try {
+    const message = (JSON.parse(body) as ApiErrorPayload).message
+    return typeof message === 'string' && message ? message : null
+  } catch {
+    return null
+  }
 }
 
 const contentPaths: Record<ContentType, string> = {
@@ -187,6 +202,11 @@ export const api = {
         method: 'PATCH',
         body: jsonBody(input),
       }),
+    setFavorite: (projectId: number, favorite: boolean) =>
+      request<Project>(`/api/projects/${projectId}/favorite`, {
+        method: 'PUT',
+        body: jsonBody({ favorite }),
+      }),
     updateContext: (projectId: number, input: ProjectContextInput) =>
       request<Project>(`/api/projects/${projectId}/context`, {
         method: 'PUT',
@@ -205,6 +225,26 @@ export const api = {
       request<void>(`/api/projects/${projectId}`, {
         method: 'DELETE',
       }),
+  },
+  members: {
+    list: (projectId: number) => request<ProjectMember[]>(`/api/projects/${projectId}/members`),
+    add: (projectId: number, userId: number, role: Exclude<ProjectRole, 'OWNER'>) =>
+      request<ProjectMember>(`/api/projects/${projectId}/members`, {
+        method: 'POST',
+        body: jsonBody({ userId, role }),
+      }),
+    changeRole: (projectId: number, userId: number, role: Exclude<ProjectRole, 'OWNER'>) =>
+      request<ProjectMember>(`/api/projects/${projectId}/members/${userId}`, {
+        method: 'PATCH',
+        body: jsonBody({ role }),
+      }),
+    remove: (projectId: number, userId: number) =>
+      request<void>(`/api/projects/${projectId}/members/${userId}`, { method: 'DELETE' }),
+    leave: (projectId: number) =>
+      request<void>(`/api/projects/${projectId}/members/me`, { method: 'DELETE' }),
+  },
+  users: {
+    lookup: (query: string) => request<UserSummary>(`/api/users/lookup${queryString({ query })}`),
   },
   repository: {
     get: (projectId: number) =>
@@ -276,7 +316,7 @@ export const api = {
       }),
   },
   tags: {
-    list: () => request<Tag[]>('/api/tags'),
+    list: (projectId?: number) => request<Tag[]>(`/api/tags${queryString({ projectId })}`),
   },
   ideas: {
     list: (projectId: number) => request<Idea[]>(`/api/projects/${projectId}/ideas`),

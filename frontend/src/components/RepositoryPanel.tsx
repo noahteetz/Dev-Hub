@@ -26,6 +26,8 @@ interface RepositoryPanelProps {
   loading: boolean
   refreshing: boolean
   onRefresh: () => void
+  /** Only the owner refreshes and fixes tokens; everybody else reads the cached state. */
+  canRefresh?: boolean
 }
 
 const statusLabels: Record<RepositorySyncStatus, string> = {
@@ -58,7 +60,7 @@ function providerLabel(provider: RepositoryProvider | null) {
   return 'Generic Git URL'
 }
 
-export function RepositoryPanel({ project, repository, loading, refreshing, onRefresh }: RepositoryPanelProps) {
+export function RepositoryPanel({ project, repository, loading, refreshing, onRefresh, canRefresh = true }: RepositoryPanelProps) {
   if (!project.repositoryUrl) {
     return null
   }
@@ -101,9 +103,11 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
               </IconButton>
             </Tooltip>
           ) : null}
+          {canRefresh ? (
           <Button disabled={loading || refreshing} startIcon={<RefreshRoundedIcon />} variant="outlined" onClick={onRefresh}>
             {refreshing ? 'Syncing' : 'Sync now'}
           </Button>
+          ) : null}
         </Stack>
       </Stack>
 
@@ -139,7 +143,7 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
             </Typography>
           ) : null}
 
-          {tokenProblem ? (
+          {tokenProblem && canRefresh ? (
             <Button component={RouterLink} size="small" sx={{ mt: 0.5 }} to="/settings">
               Open the Git access settings
             </Button>

@@ -26,6 +26,9 @@ public record Project(
 		Instant createdAt,
 		Instant updatedAt,
 		Instant effectiveActivityAt,
-		boolean stale
+		boolean stale,
+		ProjectRole role,
+		String ownerName,
+		boolean shared
 ) {
 }
