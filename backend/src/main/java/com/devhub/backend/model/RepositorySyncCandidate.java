@@ -9,6 +9,7 @@ import java.time.Instant;
  */
 public record RepositorySyncCandidate(
 		long projectId,
+		long ownerId,
 		String repositoryUrl,
 		RepositorySyncStatus syncStatus,
 		Instant rateLimitResetAt

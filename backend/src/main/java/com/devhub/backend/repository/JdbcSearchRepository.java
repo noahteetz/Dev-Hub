@@ -4,6 +4,7 @@ import com.devhub.backend.model.EntityType;
 import com.devhub.backend.model.SearchCriteria;
 import com.devhub.backend.model.SearchResult;
 import com.devhub.backend.model.Tag;
+import com.devhub.backend.security.CurrentUser;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -20,9 +21,11 @@ import org.springframework.stereotype.Repository;
 public class JdbcSearchRepository implements SearchRepository {
 
 	private final JdbcTemplate jdbc;
+	private final CurrentUser currentUser;
 
-	public JdbcSearchRepository(JdbcTemplate jdbc) {
+	public JdbcSearchRepository(JdbcTemplate jdbc, CurrentUser currentUser) {
 		this.jdbc = jdbc;
+		this.currentUser = currentUser;
 	}
 
 	@Override
@@ -54,8 +57,9 @@ public class JdbcSearchRepository implements SearchRepository {
 				.append("s.created_at AS created_at, s.updated_at AS updated_at FROM ")
 				.append(source.table()).append(" s ")
 				.append(source.projectJoin())
-				.append(" WHERE (LOWER(").append(source.titleColumn()).append(") LIKE ? OR LOWER(")
+				.append(" WHERE s.owner_id = ? AND (LOWER(").append(source.titleColumn()).append(") LIKE ? OR LOWER(")
 				.append(source.contentExpression()).append(") LIKE ?)");
+		args.add(currentUser.id());
 		args.add(pattern);
 		args.add(pattern);
 

@@ -7,6 +7,7 @@ import com.devhub.backend.model.RepositoryCredential;
 import com.devhub.backend.model.RepositoryOwner;
 import com.devhub.backend.model.RepositoryOwnerType;
 import com.devhub.backend.model.RepositoryProvider;
+import com.devhub.backend.security.CurrentUser;
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.Instant;
@@ -34,20 +35,23 @@ import org.springframework.web.client.RestClientResponseException;
 public class RepositoryDiscoveryService {
 
 	private final GitCredentialService credentialService;
+	private final CurrentUser currentUser;
 	private final Duration cacheTtl;
-	private final Map<RepositoryProvider, CacheEntry> cache = new ConcurrentHashMap<>();
+	private final Map<CacheKey, CacheEntry> cache = new ConcurrentHashMap<>();
 
 	public RepositoryDiscoveryService(
 			GitCredentialService credentialService,
+			CurrentUser currentUser,
 			@Value("${devhub.repository.discovery.cache-ttl:5m}") Duration cacheTtl
 	) {
 		this.credentialService = credentialService;
+		this.currentUser = currentUser;
 		this.cacheTtl = cacheTtl == null || cacheTtl.isNegative() ? Duration.ofMinutes(5) : cacheTtl;
 	}
 
 	@PostConstruct
 	void subscribeToCredentialChanges() {
-		credentialService.onCredentialChanged(cache::remove);
+		credentialService.onCredentialChanged(this::invalidate);
 	}
 
 	/**
@@ -84,13 +88,14 @@ public class RepositoryDiscoveryService {
 		return List.copyOf(owners);
 	}
 
-	/** Forces the next listing to call the provider again. */
+	/** Forces the next listing of the current user to call the provider again. */
 	public void invalidate(RepositoryProvider provider) {
-		cache.remove(provider);
+		cache.remove(new CacheKey(currentUser.id(), provider));
 	}
 
 	private List<RemoteRepository> all(RepositoryProvider provider) {
-		CacheEntry cached = cache.get(provider);
+		CacheKey key = new CacheKey(currentUser.id(), provider);
+		CacheEntry cached = cache.get(key);
 		if (cached != null && !cached.isExpired(cacheTtl)) {
 			return cached.repositories();
 		}
@@ -116,7 +121,7 @@ public class RepositoryDiscoveryService {
 						Comparator.nullsLast(Comparator.reverseOrder())
 				))
 				.toList();
-		cache.put(provider, new CacheEntry(sorted, Instant.now()));
+		cache.put(key, new CacheEntry(sorted, Instant.now()));
 		return sorted;
 	}
 
@@ -132,6 +137,10 @@ public class RepositoryDiscoveryService {
 			case 429 -> "The provider rate limit was reached. Try again later.";
 			default -> "The provider answered with HTTP " + statusCode + ".";
 		};
+	}
+
+	/** A listing belongs to the token it was read with, and every user has their own. */
+	private record CacheKey(long ownerId, RepositoryProvider provider) {
 	}
 
 	private record CacheEntry(List<RemoteRepository> repositories, Instant loadedAt) {

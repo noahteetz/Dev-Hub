@@ -22,7 +22,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientResponseException;
 
 /**
- * Stores one provider token per provider and hands the decrypted value to the provider
+ * Stores one token per provider and user and hands the decrypted value to the provider
  * clients. Nothing here ever returns the plain token to a caller outside this package.
  */
 @Service

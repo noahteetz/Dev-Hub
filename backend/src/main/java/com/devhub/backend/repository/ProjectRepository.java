@@ -3,6 +3,7 @@ package com.devhub.backend.repository;
 import com.devhub.backend.model.Project;
 import com.devhub.backend.model.ProjectLink;
 import com.devhub.backend.model.ProjectStatus;
+import com.devhub.backend.security.CurrentUser;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -29,13 +30,16 @@ public class ProjectRepository {
 			""";
 
 	private final JdbcTemplate jdbcTemplate;
+	private final CurrentUser currentUser;
 	private final int staleProjectDays;
 
 	public ProjectRepository(
 			JdbcTemplate jdbcTemplate,
+			CurrentUser currentUser,
 			@Value("${devhub.stale-project-days:30}") int staleProjectDays
 	) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.currentUser = currentUser;
 		this.staleProjectDays = staleProjectDays;
 	}
 
@@ -50,16 +54,18 @@ public class ProjectRepository {
 			String deploymentUrl,
 			List<ProjectLink> links
 	) {
+		long ownerId = currentUser.id();
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO projects (name, description, repository_url, deployment_url) VALUES (?, ?, ?, ?)",
+					"INSERT INTO projects (owner_id, name, description, repository_url, deployment_url) VALUES (?, ?, ?, ?, ?)",
 					new String[]{"id"}
 			);
-			statement.setString(1, name);
-			statement.setString(2, description);
-			statement.setString(3, repositoryUrl);
-			statement.setString(4, deploymentUrl);
+			statement.setLong(1, ownerId);
+			statement.setString(2, name);
+			statement.setString(3, description);
+			statement.setString(4, repositoryUrl);
+			statement.setString(5, deploymentUrl);
 			return statement;
 		}, keyHolder);
 
@@ -78,18 +84,20 @@ public class ProjectRepository {
 	}
 
 	public List<Project> findAll(boolean archived) {
-		String filter = archived ? " WHERE p.status = 'ARCHIVED'" : " WHERE p.status <> 'ARCHIVED'";
+		String filter = archived ? " AND p.status = 'ARCHIVED'" : " AND p.status <> 'ARCHIVED'";
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + filter + " ORDER BY p.favorite DESC, p.priority DESC, COALESCE(rm.last_commit_at, p.context_updated_at, p.created_at) DESC, p.id DESC",
-				this::mapRow
+				SELECT_COLUMNS + " WHERE p.owner_id = ?" + filter + " ORDER BY p.favorite DESC, p.priority DESC, COALESCE(rm.last_commit_at, p.context_updated_at, p.created_at) DESC, p.id DESC",
+				this::mapRow,
+				currentUser.id()
 		).stream().map(this::withLinks).toList();
 	}
 
 	public Optional<Project> findById(long id) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE p.id = ?",
+				SELECT_COLUMNS + " WHERE p.id = ? AND p.owner_id = ?",
 				this::mapRow,
-				id
+				id,
+				currentUser.id()
 		).stream().findFirst().map(this::withLinks);
 	}
 
@@ -102,12 +110,13 @@ public class ProjectRepository {
 			List<ProjectLink> links
 	) {
 		int updated = jdbcTemplate.update(
-				"UPDATE projects SET name = ?, description = ?, repository_url = ?, deployment_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+				"UPDATE projects SET name = ?, description = ?, repository_url = ?, deployment_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
 				name,
 				description,
 				repositoryUrl,
 				deploymentUrl,
-				id
+				id,
+				currentUser.id()
 		);
 		if (updated > 0) {
 			replaceLinks(id, links);
@@ -117,11 +126,12 @@ public class ProjectRepository {
 
 	public int updateOrganization(long id, ProjectStatus status, int priority, boolean favorite) {
 		return jdbcTemplate.update(
-			"UPDATE projects SET status = ?, priority = ?, favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+			"UPDATE projects SET status = ?, priority = ?, favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
 				status.name(),
 				priority,
 				favorite,
-				id
+				id,
+				currentUser.id()
 		);
 	}
 
@@ -135,36 +145,39 @@ public class ProjectRepository {
 			String technicalDecisions
 	) {
 		return jdbcTemplate.update(
-			"UPDATE projects SET progress_summary = ?, next_step = ?, blockers = ?, start_command = ?, build_command = ?, technical_decisions = ?, context_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+			"UPDATE projects SET progress_summary = ?, next_step = ?, blockers = ?, start_command = ?, build_command = ?, technical_decisions = ?, context_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
 				progressSummary,
 				nextStep,
 				blockers,
 				startCommand,
 				buildCommand,
 				technicalDecisions,
-				id
+				id,
+				currentUser.id()
 		);
 	}
 
 	public int archive(long id, String reason, ProjectStatus previousStatus) {
 		return jdbcTemplate.update(
-			"UPDATE projects SET status_before_archive = ?, status = 'ARCHIVED', archived_at = CURRENT_TIMESTAMP, archive_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status <> 'ARCHIVED'",
+			"UPDATE projects SET status_before_archive = ?, status = 'ARCHIVED', archived_at = CURRENT_TIMESTAMP, archive_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ? AND status <> 'ARCHIVED'",
 				previousStatus.name(),
 				reason,
-				id
+				id,
+				currentUser.id()
 		);
 	}
 
 	public int restore(long id, ProjectStatus restoredStatus) {
 		return jdbcTemplate.update(
-			"UPDATE projects SET status = ?, status_before_archive = NULL, archived_at = NULL, archive_reason = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'ARCHIVED'",
+			"UPDATE projects SET status = ?, status_before_archive = NULL, archived_at = NULL, archive_reason = '', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ? AND status = 'ARCHIVED'",
 				restoredStatus.name(),
-				id
+				id,
+				currentUser.id()
 		);
 	}
 
 	public int deleteById(long id) {
-		return jdbcTemplate.update("DELETE FROM projects WHERE id = ?", id);
+		return jdbcTemplate.update("DELETE FROM projects WHERE id = ? AND owner_id = ?", id, currentUser.id());
 	}
 
 	private void replaceLinks(long projectId, List<ProjectLink> links) {

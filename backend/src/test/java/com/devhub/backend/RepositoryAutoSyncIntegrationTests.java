@@ -1,21 +1,29 @@
 package com.devhub.backend;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devhub.backend.dto.ProjectRequest;
+import com.devhub.backend.model.GitCredentialStatus;
 import com.devhub.backend.model.Project;
 import com.devhub.backend.model.RepositoryMetadata;
+import com.devhub.backend.model.RepositoryProvider;
 import com.devhub.backend.model.RepositorySyncCandidate;
 import com.devhub.backend.model.RepositorySyncStatus;
+import com.devhub.backend.repository.AppUserRepository;
+import com.devhub.backend.repository.GitCredentialRepository;
 import com.devhub.backend.repository.RepositoryMetadataRepository;
+import com.devhub.backend.security.CurrentUser;
 import com.devhub.backend.service.ProjectService;
 import com.devhub.backend.service.RepositoryAutoSyncService;
 import com.devhub.backend.service.RepositoryMetadataService;
+import com.devhub.backend.service.TokenCipher;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -23,6 +31,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +63,10 @@ class RepositoryAutoSyncIntegrationTests {
 	private final RepositoryMetadataRepository metadataRepository;
 	private final RepositoryAutoSyncService autoSyncService;
 	private final JdbcTemplate jdbcTemplate;
+	@Autowired AppUserRepository users;
+	@Autowired CurrentUser currentUser;
+	@Autowired GitCredentialRepository credentialRepository;
+	@Autowired TokenCipher tokenCipher;
 
 	@Autowired
 	RepositoryAutoSyncIntegrationTests(
@@ -187,6 +200,24 @@ class RepositoryAutoSyncIntegrationTests {
 		List<RepositorySyncCandidate> due = metadataRepository.findDueForSync(Instant.now());
 
 		assertThat(due).extracting(RepositorySyncCandidate::projectId).containsExactly(connected.id());
+	}
+
+	@Test
+	void syncsEveryUsersProjectWithThatUsersOwnToken() {
+		stubGitHubRepository();
+		long owner = users.resolve("owner-" + UUID.randomUUID(), "owner");
+		Project project = currentUser.runAs(owner, () -> {
+			credentialRepository.save(RepositoryProvider.GITHUB, "owner", "github.com", tokenCipher.encrypt("owner-token"),
+					"oken", "owner", List.of(), GitCredentialStatus.VERIFIED);
+			return createProject("https://github.com/octocat/Hello-World");
+		});
+
+		RepositoryAutoSyncService.Run run = autoSyncService.syncDue();
+
+		assertThat(run.synced()).isEqualTo(1);
+		assertThat(metadata(project).syncStatus()).isEqualTo(RepositorySyncStatus.READY);
+		PROVIDER.verify(getRequestedFor(urlPathEqualTo("/repos/octocat/Hello-World"))
+				.withHeader("Authorization", equalTo("Bearer owner-token")));
 	}
 
 	private Project createProject(String repositoryUrl) {

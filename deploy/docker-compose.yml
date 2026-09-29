@@ -28,6 +28,9 @@ services:
       # Encrypts the stored GitHub and GitLab tokens. Losing it makes every
       # stored token unreadable, so it belongs in the database backup notes.
       DEVHUB_ENCRYPTION_KEY: ${DEVHUB_ENCRYPTION_KEY:?Set DEVHUB_ENCRYPTION_KEY in .env}
+      # Keycloak `sub` of the account that receives all data created before multi-user
+      # support. Only read by the one-time V6 migration.
+      DEVHUB_LEGACY_OWNER_SUBJECT: 5092f4f6-178c-47d0-b862-ba469ece3190
 
       # Keycloak. Never turn this off here — it is the only thing between the
       # internet and every note, snippet and Git token in the database.

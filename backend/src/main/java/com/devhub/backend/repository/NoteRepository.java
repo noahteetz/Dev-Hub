@@ -1,6 +1,7 @@
 package com.devhub.backend.repository;
 
 import com.devhub.backend.model.Note;
+import com.devhub.backend.security.CurrentUser;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -20,21 +21,25 @@ public class NoteRepository {
 			""";
 
 	private final JdbcTemplate jdbcTemplate;
+	private final CurrentUser currentUser;
 
-	public NoteRepository(JdbcTemplate jdbcTemplate) {
+	public NoteRepository(JdbcTemplate jdbcTemplate, CurrentUser currentUser) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.currentUser = currentUser;
 	}
 
 	public Note create(long projectId, String title, String content) {
+		long ownerId = currentUser.id();
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO notes (project_id, title, content) VALUES (?, ?, ?)",
+					"INSERT INTO notes (owner_id, project_id, title, content) VALUES (?, ?, ?, ?)",
 					new String[]{"id"}
 			);
-			statement.setLong(1, projectId);
-			statement.setString(2, title);
-			statement.setString(3, content);
+			statement.setLong(1, ownerId);
+			statement.setLong(2, projectId);
+			statement.setString(3, title);
+			statement.setString(4, content);
 			return statement;
 		}, keyHolder);
 
@@ -49,18 +54,20 @@ public class NoteRepository {
 
 	public List<Note> findAllByProjectId(long projectId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? ORDER BY id DESC",
+				SELECT_COLUMNS + " WHERE project_id = ? AND owner_id = ? ORDER BY id DESC",
 				NoteRepository::mapRow,
-				projectId
+				projectId,
+				currentUser.id()
 		);
 	}
 
 	public Optional<Note> findById(long projectId, long noteId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND id = ?",
+				SELECT_COLUMNS + " WHERE project_id = ? AND id = ? AND owner_id = ?",
 				NoteRepository::mapRow,
 				projectId,
-				noteId
+				noteId,
+				currentUser.id()
 		).stream().findFirst();
 	}
 
@@ -69,20 +76,22 @@ public class NoteRepository {
 				"""
 				UPDATE notes
 				SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE project_id = ? AND id = ?
+				WHERE project_id = ? AND id = ? AND owner_id = ?
 				""",
 				title,
 				content,
 				projectId,
-				noteId
+				noteId,
+				currentUser.id()
 		);
 	}
 
 	public int delete(long projectId, long noteId) {
 		return jdbcTemplate.update(
-				"DELETE FROM notes WHERE project_id = ? AND id = ?",
+				"DELETE FROM notes WHERE project_id = ? AND id = ? AND owner_id = ?",
 				projectId,
-				noteId
+				noteId,
+				currentUser.id()
 		);
 	}
 

@@ -53,12 +53,13 @@ public class RepositoryMetadataRepository {
 	 * Projects whose repository was last attempted before {@code dueBefore}, oldest
 	 * attempt first. Archived projects and projects without a repository URL never
 	 * appear; a project that has never been synced has no metadata row and is due
-	 * right away.
+	 * right away. This is the one query that spans every user; each candidate carries
+	 * its owner so the sync can run on their behalf.
 	 */
 	public List<RepositorySyncCandidate> findDueForSync(Instant dueBefore) {
 		return jdbcTemplate.query(
 				"""
-				SELECT p.id, p.repository_url, rm.sync_status, rm.rate_limit_reset_at
+				SELECT p.id, p.owner_id, p.repository_url, rm.sync_status, rm.rate_limit_reset_at
 					FROM projects p
 					LEFT JOIN repository_metadata rm ON rm.project_id = p.id
 					WHERE p.status <> 'ARCHIVED'
@@ -70,6 +71,7 @@ public class RepositoryMetadataRepository {
 					String status = resultSet.getString("sync_status");
 					return new RepositorySyncCandidate(
 							resultSet.getLong("id"),
+							resultSet.getLong("owner_id"),
 							resultSet.getString("repository_url"),
 							status == null ? RepositorySyncStatus.NEVER_SYNCED : RepositorySyncStatus.valueOf(status),
 							toInstant(resultSet.getTimestamp("rate_limit_reset_at"))

@@ -5,6 +5,7 @@ import com.devhub.backend.model.RepositoryProvider;
 import com.devhub.backend.model.RepositorySyncCandidate;
 import com.devhub.backend.model.RepositorySyncStatus;
 import com.devhub.backend.repository.RepositoryMetadataRepository;
+import com.devhub.backend.security.CurrentUser;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -31,6 +32,7 @@ public class RepositoryAutoSyncService {
 	private final RepositoryMetadataRepository metadataRepository;
 	private final RepositoryMetadataService metadataService;
 	private final RepositoryUrlParser urlParser;
+	private final CurrentUser currentUser;
 	private final boolean enabled;
 	private final Duration interval;
 	private final Duration requestSpacing;
@@ -39,6 +41,7 @@ public class RepositoryAutoSyncService {
 			RepositoryMetadataRepository metadataRepository,
 			RepositoryMetadataService metadataService,
 			RepositoryUrlParser urlParser,
+			CurrentUser currentUser,
 			@Value("${devhub.repository.sync.enabled:true}") boolean enabled,
 			@Value("${devhub.repository.sync.interval:1h}") Duration interval,
 			@Value("${devhub.repository.sync.request-spacing:1s}") Duration requestSpacing
@@ -46,6 +49,7 @@ public class RepositoryAutoSyncService {
 		this.metadataRepository = metadataRepository;
 		this.metadataService = metadataService;
 		this.urlParser = urlParser;
+		this.currentUser = currentUser;
 		this.enabled = enabled;
 		this.interval = interval == null || interval.isNegative() || interval.isZero()
 				? Duration.ofHours(1)
@@ -82,7 +86,8 @@ public class RepositoryAutoSyncService {
 				continue;
 			}
 			try {
-				metadataService.refresh(candidate.projectId());
+				// The owner's own token is used; another user's token never reads this repository.
+				currentUser.runAs(candidate.ownerId(), () -> metadataService.refresh(candidate.projectId()));
 				synced++;
 			} catch (RuntimeException exception) {
 				failed++;

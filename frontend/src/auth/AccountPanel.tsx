@@ -48,13 +48,23 @@ export function AccountPanel() {
         <Button
           startIcon={<LogoutRoundedIcon />}
           variant="outlined"
-          onClick={() => void auth.signoutRedirect()}
+          onClick={() => {
+            clearUserStorage()
+            void auth.signoutRedirect()
+          }}
         >
           Sign out
         </Button>
       </Stack>
     </Paper>
   )
+}
+
+/** Unsaved drafts and recent projects belong to the account; the next one on this browser must not see them. */
+function clearUserStorage() {
+  Object.keys(window.localStorage)
+    .filter((key) => key.startsWith('devhub.draft.') || key === 'devhub.recentProjects')
+    .forEach((key) => window.localStorage.removeItem(key))
 }
 
 /** Reads the realm roles straight out of the access token, without a round trip. */

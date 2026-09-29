@@ -2,6 +2,7 @@ package com.devhub.backend.repository;
 
 import com.devhub.backend.model.Tag;
 import com.devhub.backend.model.Todo;
+import com.devhub.backend.security.CurrentUser;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -21,21 +22,25 @@ public class TodoRepository {
 			""";
 
 	private final JdbcTemplate jdbcTemplate;
+	private final CurrentUser currentUser;
 
-	public TodoRepository(JdbcTemplate jdbcTemplate) {
+	public TodoRepository(JdbcTemplate jdbcTemplate, CurrentUser currentUser) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.currentUser = currentUser;
 	}
 
 	public Todo create(long projectId, String title, String content) {
+		long ownerId = currentUser.id();
 		KeyHolder keyHolder = new GeneratedKeyHolder();
 		jdbcTemplate.update(connection -> {
 			PreparedStatement statement = connection.prepareStatement(
-					"INSERT INTO todos (project_id, title, content) VALUES (?, ?, ?)",
+					"INSERT INTO todos (owner_id, project_id, title, content) VALUES (?, ?, ?, ?)",
 					new String[]{"id"}
 			);
-			statement.setLong(1, projectId);
-			statement.setString(2, title);
-			statement.setString(3, content);
+			statement.setLong(1, ownerId);
+			statement.setLong(2, projectId);
+			statement.setString(3, title);
+			statement.setString(4, content);
 			return statement;
 		}, keyHolder);
 
@@ -49,18 +54,20 @@ public class TodoRepository {
 
 	public List<Todo> findAllByProjectId(long projectId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? ORDER BY completed ASC, id DESC",
+				SELECT_COLUMNS + " WHERE project_id = ? AND owner_id = ? ORDER BY completed ASC, id DESC",
 				TodoRepository::mapRow,
-				projectId
+				projectId,
+				currentUser.id()
 		);
 	}
 
 	public Optional<Todo> findById(long projectId, long todoId) {
 		return jdbcTemplate.query(
-				SELECT_COLUMNS + " WHERE project_id = ? AND id = ?",
+				SELECT_COLUMNS + " WHERE project_id = ? AND id = ? AND owner_id = ?",
 				TodoRepository::mapRow,
 				projectId,
-				todoId
+				todoId,
+				currentUser.id()
 		).stream().findFirst();
 	}
 
@@ -68,8 +75,8 @@ public class TodoRepository {
 		return jdbcTemplate.update("""
 				UPDATE todos
 				SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE project_id = ? AND id = ?
-				""", title, content, projectId, todoId);
+				WHERE project_id = ? AND id = ? AND owner_id = ?
+				""", title, content, projectId, todoId, currentUser.id());
 	}
 
 	public int setCompleted(long projectId, long todoId, boolean completed) {
@@ -78,15 +85,16 @@ public class TodoRepository {
 				SET completed = ?,
 					completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,
 					updated_at = CURRENT_TIMESTAMP
-				WHERE project_id = ? AND id = ?
-				""", completed, completed, projectId, todoId);
+				WHERE project_id = ? AND id = ? AND owner_id = ?
+				""", completed, completed, projectId, todoId, currentUser.id());
 	}
 
 	public int delete(long projectId, long todoId) {
 		return jdbcTemplate.update(
-				"DELETE FROM todos WHERE project_id = ? AND id = ?",
+				"DELETE FROM todos WHERE project_id = ? AND id = ? AND owner_id = ?",
 				projectId,
-				todoId
+				todoId,
+				currentUser.id()
 		);
 	}
 

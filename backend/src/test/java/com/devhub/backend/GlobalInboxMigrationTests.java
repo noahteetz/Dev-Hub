@@ -20,7 +20,7 @@ class GlobalInboxMigrationTests {
 			jdbc.update("INSERT INTO code_snippets (id, project_id, title, source_code) VALUES (100, 100, 'Inbox snippet', 'code')");
 			jdbc.update("INSERT INTO ideas (id, project_id, title) VALUES (100, 100, 'Inbox idea')");
 			jdbc.update("INSERT INTO todos (id, project_id, title) VALUES (100, 100, 'Inbox todo')");
-			Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
+			Flyway.configure().dataSource(source).locations("classpath:db/migration").placeholders(java.util.Map.of("legacyOwnerSubject", "local")).load().migrate();
 			assertThat(jdbc.queryForObject("SELECT project_id FROM notes WHERE id = 100", Long.class)).isNull();
 			assertThat(jdbc.queryForObject("SELECT project_id FROM notes WHERE id = 101", Long.class)).isEqualTo(101L);
 			assertThat(jdbc.queryForObject("SELECT content FROM notes WHERE id = 100", String.class)).isEqualTo("unchanged");

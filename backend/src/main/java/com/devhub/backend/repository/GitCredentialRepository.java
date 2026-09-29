@@ -3,6 +3,7 @@ package com.devhub.backend.repository;
 import com.devhub.backend.model.GitCredential;
 import com.devhub.backend.model.GitCredentialStatus;
 import com.devhub.backend.model.RepositoryProvider;
+import com.devhub.backend.security.CurrentUser;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -23,17 +24,24 @@ public class GitCredentialRepository {
 			""";
 
 	private final JdbcTemplate jdbcTemplate;
+	private final CurrentUser currentUser;
 
-	public GitCredentialRepository(JdbcTemplate jdbcTemplate) {
+	public GitCredentialRepository(JdbcTemplate jdbcTemplate, CurrentUser currentUser) {
 		this.jdbcTemplate = jdbcTemplate;
+		this.currentUser = currentUser;
 	}
 
 	public List<GitCredential> findAll() {
-		return jdbcTemplate.query(SELECT_COLUMNS + " ORDER BY provider", this::mapRow);
+		return jdbcTemplate.query(SELECT_COLUMNS + " WHERE owner_id = ? ORDER BY provider", this::mapRow, currentUser.id());
 	}
 
 	public Optional<GitCredential> findByProvider(RepositoryProvider provider) {
-		return jdbcTemplate.query(SELECT_COLUMNS + " WHERE provider = ?", this::mapRow, provider.name())
+		return jdbcTemplate.query(
+						SELECT_COLUMNS + " WHERE provider = ? AND owner_id = ?",
+						this::mapRow,
+						provider.name(),
+						currentUser.id()
+				)
 				.stream()
 				.findFirst();
 	}
@@ -51,12 +59,13 @@ public class GitCredentialRepository {
 	) {
 		String joinedScopes = String.join(",", scopes == null ? List.of() : scopes);
 		Instant now = Instant.now();
+		long ownerId = currentUser.id();
 		int updated = jdbcTemplate.update(
 				"""
 				UPDATE git_credentials
 					SET label = ?, host = ?, token_encrypted = ?, token_hint = ?, account_login = ?,
 						scopes = ?, status = ?, last_error = '', last_verified_at = ?
-					WHERE provider = ?
+					WHERE provider = ? AND owner_id = ?
 				""",
 				label,
 				host,
@@ -66,16 +75,18 @@ public class GitCredentialRepository {
 				joinedScopes,
 				status.name(),
 				timestamp(status == GitCredentialStatus.VERIFIED ? now : null),
-				provider.name()
+				provider.name(),
+				ownerId
 		);
 		if (updated == 0) {
 			jdbcTemplate.update(
 					"""
 					INSERT INTO git_credentials
-						(provider, label, host, token_encrypted, token_hint, account_login, scopes,
+						(owner_id, provider, label, host, token_encrypted, token_hint, account_login, scopes,
 							status, created_at, last_verified_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 					""",
+					ownerId,
 					provider.name(),
 					label,
 					host,
@@ -102,19 +113,24 @@ public class GitCredentialRepository {
 				"""
 				UPDATE git_credentials
 					SET account_login = ?, scopes = ?, status = ?, last_error = ?, last_verified_at = ?
-					WHERE provider = ?
+					WHERE provider = ? AND owner_id = ?
 				""",
 				accountLogin,
 				String.join(",", scopes == null ? List.of() : scopes),
 				status.name(),
 				lastError,
 				timestamp(status == GitCredentialStatus.VERIFIED ? Instant.now() : null),
-				provider.name()
+				provider.name(),
+				currentUser.id()
 		);
 	}
 
 	public int deleteByProvider(RepositoryProvider provider) {
-		return jdbcTemplate.update("DELETE FROM git_credentials WHERE provider = ?", provider.name());
+		return jdbcTemplate.update(
+				"DELETE FROM git_credentials WHERE provider = ? AND owner_id = ?",
+				provider.name(),
+				currentUser.id()
+		);
 	}
 
 	private GitCredential mapRow(ResultSet resultSet, int rowNumber) throws SQLException {
