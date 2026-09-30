@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {credentialMatches, uuid, repoUrl, Serial} from '../src/manager.mjs';
+import {credentialMatches, uuid, repoUrl, Serial, Manager} from '../src/manager.mjs';
 import {demux} from '../src/docker.mjs';
 test('credential broker is restricted to the exact HTTPS repository', () => {
   assert.equal(credentialMatches('https://github.com/a/b', 'github.com', 'a/b.git'), true);
@@ -22,4 +22,26 @@ test('Docker output is decoded without dropping partial or corrupt frames', () =
   const header = Buffer.alloc(8); header[0] = 1; header.writeUInt32BE(3, 4);
   assert.equal(demux(Buffer.concat([header, Buffer.from('abc')])), 'abc');
   assert.throws(() => demux(Buffer.concat([header, Buffer.from('ab')])));
+});
+
+test('a stop before provisioning fences an older queued start', async t => {
+  const fs = await import('node:fs/promises'), os = await import('node:os'), path = await import('node:path');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'devhub-fence-'));
+  t.after(() => fs.rm(directory, {recursive: true, force: true}));
+  const docker = {inspect: async () => null, remove: async () => {},
+    request: async () => { const e = new Error('missing'); e.status = 404; throw e; }};
+  const manager = new Manager({docker, data: directory, brokersRoot: path.join(directory, 'brokers'), token: 'test'});
+  const id = '11111111-2222-3333-4444-555555555555';
+  await manager.stop(id, 2);
+  assert.equal((await manager.read(id)).generation, 2);
+  await assert.rejects(manager.start({id, generation: 1, ownerId: 1, repositoryUrl: 'https://github.com/a/b',
+    branch: 'work/test', commitName: 'Test', commitEmail: 'test@example.com'}), /Stale/);
+});
+test('global admission bounds concurrent workspaces across different users', async () => {
+  const ids = ['11111111-2222-3333-4444-555555555555', '11111111-2222-3333-4444-555555555556'];
+  const manager = new Manager({docker: {inspect: async () => ({State: {Running: true}})}, token: 'test'});
+  manager.read = async () => null;
+  manager.all = async () => ids.map((id, index) => ({id, ownerId: index + 2}));
+  await assert.rejects(manager.start({id: '11111111-2222-3333-4444-555555555557', generation: 1, ownerId: 1,
+    repositoryUrl: 'https://github.com/a/b', branch: 'work/test', commitName: 'Test', commitEmail: 'test@example.com'}), /active workspace limit/);
 });

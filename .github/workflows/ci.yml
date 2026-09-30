@@ -100,6 +100,7 @@ jobs:
       - name: Validate Compose and nginx configuration
         env:
           POSTGRES_PASSWORD: ci-only-password
+          DEVHUB_ENCRYPTION_KEY: dGVzdC1vbmx5LWtleS1mb3ItZGV2aHViLTMyLWJ5dGU=
         run: |
           docker compose config --quiet
           docker compose -f deploy/docker-compose.yml config --quiet

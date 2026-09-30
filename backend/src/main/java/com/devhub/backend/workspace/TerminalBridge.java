@@ -51,8 +51,10 @@ public class TerminalBridge extends TextWebSocketHandler implements org.springfr
                 .buildAsync(runner.terminalUri(grant.workspaceId(), grant.terminalId()), new WebSocket.Listener() {
                     @Override public void onOpen(WebSocket socket) {
                         c.runner = socket;
+                        try { tickets.check(c.grant.get()); }
+                        catch (RuntimeException e) { socket.abort(); c.ready.completeExceptionally(e); close(c, CloseStatus.POLICY_VIOLATION); return; }
+                        if (!c.browser.isOpen()) { socket.abort(); c.ready.completeExceptionally(new IllegalStateException("Browser closed")); return; }
                         c.ready.complete(socket);
-                        if (!c.browser.isOpen()) { socket.abort(); return; }
                         socket.request(1);
                     }
                     @Override public CompletionStage<?> onBinary(WebSocket socket, ByteBuffer data, boolean last) {
@@ -106,6 +108,7 @@ public class TerminalBridge extends TextWebSocketHandler implements org.springfr
         var c = connections.get(browser.getId()); if (c != null) close(c, CloseStatus.SERVER_ERROR);
     }
     private void close(Connection c, CloseStatus status) {
+        c.ready.completeExceptionally(new IllegalStateException("Terminal closed"));
         connections.remove(c.browser.getId());
         if (c.runner != null) c.runner.abort();
         try { c.browser.close(status); } catch (IOException ignored) {}

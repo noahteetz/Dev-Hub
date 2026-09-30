@@ -1,4 +1,4 @@
-const gitOptions = ['-c', 'core.hooksPath=/dev/null', '-c', 'http.followRedirects=false',
+const gitOptions = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'http.followRedirects=false',
   '-c', 'credential.helper=/usr/local/bin/devhub-git-credential', '-c', 'credential.useHttpPath=true'];
 export async function gitReport(exec, expectedUrl) {
   const warnings = [], changedFiles = [], unpushedBranches = [];

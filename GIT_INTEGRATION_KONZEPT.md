@@ -26,7 +26,7 @@ Zwei Dinge, die zusammengehoeren:
 
 Dev Hub ist self-hosted und einbenutzerlich. Ein OAuth-Flow oder eine GitHub App braucht eine registrierte Anwendung, eine erreichbare Callback-URL und Token-Refresh. Das ist fuer den aktuellen Stand zu viel.
 
-Der Einstieg ist deshalb ein **Personal Access Token pro Provider**, das der Benutzer in den Einstellungen hinterlegt. Eine GitHub App bleibt als spaetere Option offen, wird aber erst relevant, wenn Remote-Workspaces (Roadmap Abschnitt 10) Schreibzugriff brauchen.
+Der Einstieg ist deshalb ein **Personal Access Token pro Provider**, das der Benutzer in den Einstellungen hinterlegt. Eine GitHub App bleibt als spaetere Option offen. Remote-Workspaces verwenden vorerst ebenfalls persoenliche PATs; Push erfordert explizite Schreibrechte.
 
 Empfohlene Scopes:
 
@@ -142,6 +142,10 @@ Der Import akzeptiert ausschliesslich Repositories, die in der Liste des hinterl
 
 - OAuth- oder GitHub-App-Flow, solange nur gelesen wird
 - Mehrere Accounts pro Provider gleichzeitig; das Modell ist dafuer vorbereitet, die UI bleibt zunaechst bei einem
-- Schreibzugriffe, Klonen oder SSH-Keys; das gehoert zu Remote-Workspaces
+- SSH-Keys und GitHub-App-Anmeldung. HTTPS-Clone/Fetch/Push sind im separaten Workspace-Modul umgesetzt; dessen Credential-Broker nutzt ausschliesslich den Token des ausfuehrenden Nutzers.
 - Webhooks oder Push-basierte Aktualisierung; die stuendliche Hintergrund-Synchronisation deckt den Bedarf ab
   (`devhub.repository.sync.*`), `refresh` bleibt daneben als manueller Ausloeser bestehen
+
+## Remote-Workspace-Erweiterung
+
+Metadatenzugriff bleibt lesend. Workspaces beziehen einen eigenen verschluesselten PAT nur fuer autorisierte Git-Vorgaenge ueber einen kurzlebig autorisierten Unix-Credential-Broker; kein Token des Projektowners wird an Mitglieder verliehen. Clone-URLs und Git-Konfiguration enthalten keine PATs. GitHub fine-grained Contents write beziehungsweise GitLab write_repository sind fuer Push notwendig; vorhandene Lesetokens bleiben fuer Metadaten und Clone verwendbar. Siehe [Betriebsdokumentation](deploy/REMOTE_WORKSPACES.md).

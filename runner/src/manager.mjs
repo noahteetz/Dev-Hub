@@ -239,10 +239,16 @@ export class Manager {
   async stop(id, generation) {
     uuid(id);
     return this.serial.run(id, async () => {
-      const meta = await this.read(id);
+      if (!Number.isSafeInteger(generation) || generation < 1) throw new Error('Invalid generation');
+      let meta = await this.read(id);
       if (meta?.status === 'DELETED') return this.inspect(id);
-      if (!meta) return {status: 'STOPPED', memoryBytes: 0, cpuPercent: 0, diskBytes: 0, reason: '', lastActivityAt: null};
-      if (!Number.isSafeInteger(generation) || generation < meta.generation) throw new Error('Stale operation');
+      if (meta && generation < meta.generation) throw new Error('Stale operation');
+      // A stop can arrive while an older start waits in the global admission queue.
+      // Persist its generation even if no container or metadata exists yet.
+      if (!meta) {
+        meta = {id, generation, status: 'STOPPED', initialized: false, terminals: []};
+        await this.write(meta);
+      }
       meta.generation = generation; await this.write(meta);
       await this.stopRuntime(meta); return this.inspect(id);
     });

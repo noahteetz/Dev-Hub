@@ -2,7 +2,7 @@
 
 Stand: 2026-09-30. Branch: `remote-workspaces`, Ausgangspunkt: `main` bei `9c3197bf1adab8fcbb3dd638d0e125e214fc249c` (Shared Projects zusammengeführt).
 
-Status: Planungsentwurf. Dieser Commit enthält ausschließlich den Plan, keine Workspace-Implementierung. Bestehendes Docker-Environment und Commit/Push im Terminal sind mit dem Nutzer geklärt; die Aufbewahrung des Checkouts ist noch offen.
+Status: Umsetzung auf `remote-workspaces` autorisiert. Alle drei Produktentscheidungen sind bestätigt: bestehendes Docker-Environment, Commit/Push im Terminal sowie getrenntes Stoppen (Dateien behalten) und Löschen (nach Prüfung). Betriebsanleitung und aktuelle Grenzen stehen in [deploy/REMOTE_WORKSPACES.md](deploy/REMOTE_WORKSPACES.md).
 
 ## 1. Ziel und erster Umfang
 
@@ -40,12 +40,12 @@ Die Deployment-Dokumentation enthält noch eine überholte Aussage über gemeins
 
 ## 3. Offene Entscheidungen
 
-Drei Fragen wurden dem Nutzer gestellt. Q1 und Q3 sind wie unten beantwortet; Q2 bleibt ein ausdrücklich vorläufiger Vorschlag. Mit „Host“ ist der Server beziehungsweise die VM gemeint, auf dem Docker läuft.
+Drei Fragen wurden dem Nutzer gestellt. Q1 und Q3 sind wie unten beantwortet; Q2 wurde ebenfalls bestätigt. Mit „Host“ ist der Server beziehungsweise die VM gemeint, auf dem Docker läuft.
 
 | ID | Entscheidung | Stand / Festlegung | Einfluss |
 | --- | --- | --- | --- |
 | Q1 | Ausführungsort | Bestehendes Docker-Environment nutzen; kein zusätzlicher Server für die erste Iteration. CPU/RAM, freier Speicher und Quota-Möglichkeiten noch nicht geprüft | Runner-Service neben vorhandenen Diensten, getrennte Netzwerke und Ressourcenbudgets |
-| Q2 | Verhalten beim Beenden und Aufbewahrung des Checkouts | Noch offen: vorgeschlagen Stoppen behält Arbeitsdateien; Löschen entfernt sie nach Prüfung. KI-Profile separat persistent | Volumes, Zustände, Fortsetzen und Bereinigungsregeln |
+| Q2 | Verhalten beim Beenden und Aufbewahrung des Checkouts | Bestätigt: Stoppen behält Arbeitsdateien; Löschen entfernt sie nach Prüfung. KI-Profile separat persistent | Volumes, Zustände, Fortsetzen und Bereinigungsregeln |
 | Q3 | Erste Git-Oberfläche | Bestätigt: Commit/Push im Terminal, Git-Status und Löschschutz im Browser; Diff/Buttons später | Umfang und Reihenfolge der UI-Arbeit |
 
 Weitere vorgeschlagene Defaults: OWNER und EDITOR dürfen eigene Workspaces starten; VIEWER nicht. Zusätzlich ist immer die Realm-Rolle erforderlich. Ein Nutzer bekommt keinen Zugriff auf Workspace, Terminal oder Zugangsdaten anderer Projektmitglieder, auch nicht als Projektowner. Projektzugriff ersetzt keine Berechtigung beim Git-Anbieter.
@@ -130,7 +130,7 @@ Idle-/Maximallaufzeit beendet zunächst nur Compute. Ausgabe eines laufenden Age
 
 | Schritt | Änderungen | Fertig, wenn |
 | --- | --- | --- |
-| 1. Verträge und Rechte | Bestätigte Q1/Q3 und offene Q2 festhalten; Feature-Schalter standardmäßig aus; Migration/DTOs/Zustände; RUN_WORKSPACE; Realm-Rolle; Runner-Schnittstelle mit Fake für Backendtests | Unberechtigte Nutzer, Viewer und fremde Workspace-/Profil-IDs werden abgewiesen; gleichzeitige Starts erzeugen nur eine Operation |
+| 1. Verträge und Rechte | Bestätigte Q1/Q2/Q3 festhalten; Feature-Schalter standardmäßig aus; Migration/DTOs/Zustände; RUN_WORKSPACE; Realm-Rolle; Runner-Schnittstelle mit Fake für Backendtests | Unberechtigte Nutzer, Viewer und fremde Workspace-/Profil-IDs werden abgewiesen; gleichzeitige Starts erzeugen nur eine Operation |
 | 2. Runner und erste durchgängige Shell | `runner/`, Workspace-Image, private Dienstverbindung, Create/Start/Stop/Inspect/Resize; Clone und Limits; einfaches Terminal über Tickets | Repo lässt sich im Browser bearbeiten; Browser-Reconnect erhält Session; Stop/Start behält Dateien; Neustarts werden abgeglichen |
 | 3. Persönlicher Git-Zugriff | Eigene Credential-Leases/Helper, Branchstart, Git-Identität, Scopehinweise und Fehlermeldungen | Private Repos mit eigenem Token klonbar; Commit/Push im Terminal funktionieren; fremde Remotes bekommen keinen Token |
 | 4. KI-Profile | Profil-API, Settings, persistente Mounts, Auswahl beim Terminalstart, Claude/Codex | Login beider CLIs überlebt Container-Neuanlage; anderer Nutzer/anderes Profil erhält keine Login-Dateien |
@@ -158,3 +158,9 @@ Schritte sind aufeinander aufbauende reviewbare Commits. Löschfunktionen bleibe
 Mit zwei Nutzern und einem geteilten Projekt: Owner/Editor mit Workspace-Rolle können je eine eigene Umgebung starten; Viewer und Nutzer ohne Rolle können es nicht. Ein privates Repo wird mit eigenen Credentials geklont, Shell und beide CLIs funktionieren, Login bleibt nach neuer Container-Sitzung erhalten, Browser-Reconnect verliert keine laufende Sitzung. Änderungen werden auf einen Arbeitsbranch gepusht und sichere Checkouts samt Container anschließend entfernt.
 
 Ungepushte/uncommittete Änderungen, unerreichbare Remotes, Rollenentzug, Profilkonflikte und Backend-/Runner-Neustarts führen zu klaren Zuständen ohne automatische Löschung von Arbeitsdaten. Persönliche Profile bleiben beim normalen Workspace-Abschluss erhalten. Diese Abnahme umfasst mehr als grüne App-Unit-Tests; Docker- und Browserprüfung sind vor Merge erforderlich.
+
+## Umsetzungsentscheidungen
+
+Der Runner nutzt kleine Node-22-ES-Module mit Laufzeitvalidierung, Syntaxchecks und Node-Tests statt des vorgeschlagenen TypeScript-Builds. Lebenszyklusaufträge sind über gewünschten Zustand, Generation und Lease direkt in der Workspace-Tabelle dauerhaft abgebildet; Runner-Metadaten ergänzen das Docker-Reconciliation. Ein globales Startlimit schützt den gemeinsamen Host. Arbeitscontainer haben ausschließlich ein eigenes internes Netz und verwenden einen Egress-Proxy. Terminaltickets werden im Sec-WebSocket-Protocol-Header statt einer URL übertragen.
+
+KI-Profilterminals öffnen eine Shell mit ausgewählter CLI-Konfiguration, damit Device-Login und anschließender CLI-Start im selben Terminal funktionieren. Profile liegen in persönlichen Named Volumes. Aufbewahrte Checkouts werden nicht automatisch gelöscht; automatische Bereinigung beendet Compute und entfernt verwaiste Laufzeitressourcen. Harte Disk-Quoten und echte persönliche KI-/Git-Provider-Anmeldung benötigen eine ergänzende Serverabnahme; diese Grenzen sind in der Betriebsdokumentation festgehalten.
