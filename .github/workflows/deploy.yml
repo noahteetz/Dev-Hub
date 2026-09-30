@@ -7,6 +7,7 @@ on:
       - "backend/**"
       - "frontend/**"
       - "deploy/**"
+      - "runner/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -60,6 +61,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Runner checks
+        working-directory: runner
+        run: |
+          npm ci
+          npm run lint
+          npm test
+      - name: Build & push runner
+        uses: docker/build-push-action@v6
+        with:
+          context: ./runner
+          push: true
+          tags: |
+            ghcr.io/noahteetz/dev-hub/runner:latest
+            ghcr.io/noahteetz/dev-hub/runner:${{ github.sha }}
+      - name: Build & push workspace image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./runner/workspace
+          push: true
+          tags: |
+            ghcr.io/noahteetz/dev-hub/workspace:latest
+            ghcr.io/noahteetz/dev-hub/workspace:${{ github.sha }}
+      - name: Build & push workspace egress image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./runner/egress
+          push: true
+          tags: |
+            ghcr.io/noahteetz/dev-hub/workspace-egress:latest
+            ghcr.io/noahteetz/dev-hub/workspace-egress:${{ github.sha }}
       - name: Build & push backend
         uses: docker/build-push-action@v6
         with:

@@ -25,5 +25,7 @@ public final class WorkspaceModels {
             Instant lastActivityAt, String reason) {}
     public record GitReport(boolean safe, boolean known, String branch, List<String> warnings,
             List<String> changedFiles, List<String> unpushedBranches) {}
-    public record Credential(String username, String password) {}
+    public record Credential(String username, String password) {
+        @Override public String toString() { return "Credential[username=" + username + ", password=***]"; }
+    }
 }

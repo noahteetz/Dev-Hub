@@ -12,8 +12,12 @@ networks:
     external: true
   private:
     internal: true
+  workspace-control:
+    internal: true
+  workspace-egress-public:
 
 volumes:
+  runner-state:
   postgres-data:
 
 services:
@@ -45,9 +49,14 @@ services:
       DEVHUB_AUTH_AUDIENCE: dev-hub-backend
       # And so is a token from an account without this realm role.
       DEVHUB_AUTH_REQUIRED_ROLE: devhub-user
+      DEVHUB_WORKSPACE_ENABLED: ${DEVHUB_WORKSPACE_ENABLED:-false}
+      DEVHUB_RUNNER_URL: http://runner:8090
+      DEVHUB_RUNNER_TOKEN: ${DEVHUB_RUNNER_TOKEN:-}
+      DEVHUB_WORKSPACE_ORIGINS: https://dev-hub.noahteetz.de
     networks:
       - edge
       - private
+      - workspace-control
     depends_on:
       database:
         condition: service_healthy
@@ -102,3 +111,51 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  runner:
+    image: ghcr.io/noahteetz/dev-hub/runner:latest
+    profiles: [workspaces]
+    restart: unless-stopped
+    environment:
+      DEVHUB_RUNNER_TOKEN: ${DEVHUB_RUNNER_TOKEN:-}
+      DEVHUB_BACKEND_URL: http://backend:8080
+      WORKSPACE_IMAGE: ghcr.io/noahteetz/dev-hub/workspace:latest
+      RUNNER_BROKER_DIR: /run/dev-hub-brokers
+      WORKSPACE_CPUS: ${WORKSPACE_CPUS:-2}
+      WORKSPACE_MEMORY_BYTES: ${WORKSPACE_MEMORY_BYTES:-4294967296}
+      WORKSPACE_DISK_BYTES: ${WORKSPACE_DISK_BYTES:-5368709120}
+      RUNNER_MIN_FREE_BYTES: ${RUNNER_MIN_FREE_BYTES:-10737418240}
+      WORKSPACE_IDLE_SECONDS: ${WORKSPACE_IDLE_SECONDS:-1800}
+      WORKSPACE_MAX_RUNTIME_SECONDS: ${WORKSPACE_MAX_RUNTIME_SECONDS:-14400}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/dev-hub-brokers:/run/dev-hub-brokers
+      - runner-state:/data
+    networks: [workspace-control]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      workspace-image:
+        condition: service_completed_successfully
+      workspace-egress:
+        condition: service_started
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:8090/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  workspace-image:
+    image: ghcr.io/noahteetz/dev-hub/workspace:latest
+    profiles: [workspaces]
+    command: ["true"]
+    network_mode: none
+
+  workspace-egress:
+    image: ghcr.io/noahteetz/dev-hub/workspace-egress:latest
+    container_name: dev-hub-workspace-egress
+    profiles: [workspaces]
+    restart: unless-stopped
+    networks: [workspace-egress-public]
+    security_opt: [no-new-privileges:true]

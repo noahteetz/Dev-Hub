@@ -230,6 +230,7 @@ export class Manager {
     uuid(id);
     return this.serial.run(id, async () => {
       const meta = await this.read(id);
+      if (meta?.status === 'DELETED') return this.inspect(id);
       if (!meta) return {status: 'STOPPED', memoryBytes: 0, cpuPercent: 0, diskBytes: 0, reason: '', lastActivityAt: null};
       if (!Number.isSafeInteger(generation) || generation < meta.generation) throw new Error('Stale operation');
       meta.generation = generation; await this.write(meta);

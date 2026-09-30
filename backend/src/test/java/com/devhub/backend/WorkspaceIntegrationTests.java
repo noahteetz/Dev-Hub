@@ -70,11 +70,11 @@ class WorkspaceIntegrationTests {
     @Test void activeWorkspaceLimitsAndProjectDeletionProtectRetainedFiles() {
         var w = create(owner);
         assertThatThrownBy(() -> create(owner)).isInstanceOf(ConflictException.class);
-        assertThatThrownBy(() -> as(owner, () -> projects.delete(project.id()))).isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> as(owner, () -> { projects.delete(project.id()); return null; })).isInstanceOf(ConflictException.class);
         as(owner, () -> service.stop(w.id()));
         repository.complete(repository.find(w.id()).orElseThrow(), "STOPPED", "");
         assertThat(as(owner, () -> service.get(w.id())).status()).isEqualTo("STOPPED");
-        assertThatThrownBy(() -> as(owner, () -> projects.delete(project.id()))).isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> as(owner, () -> { projects.delete(project.id()); return null; })).isInstanceOf(ConflictException.class);
         as(owner, () -> service.delete(w.id(), new DeleteInput(false, "")));
         repository.complete(repository.find(w.id()).orElseThrow(), "DELETED", "");
         as(owner, () -> { projects.delete(project.id()); return null; });

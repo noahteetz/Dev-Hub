@@ -31,6 +31,11 @@ services:
       DEVHUB_AUTH_CLIENT_ID: ${DEVHUB_AUTH_CLIENT_ID:-dev-hub-frontend}
       DEVHUB_AUTH_AUDIENCE: ${DEVHUB_AUTH_AUDIENCE:-dev-hub-backend}
       DEVHUB_AUTH_REQUIRED_ROLE: ${DEVHUB_AUTH_REQUIRED_ROLE:-devhub-user}
+      DEVHUB_WORKSPACE_ENABLED: ${DEVHUB_WORKSPACE_ENABLED:-false}
+      DEVHUB_RUNNER_URL: http://runner:8090
+      DEVHUB_RUNNER_TOKEN: ${DEVHUB_RUNNER_TOKEN:-}
+      DEVHUB_WORKSPACE_ORIGINS: ${DEVHUB_WORKSPACE_ORIGINS:-http://localhost:5173}
+    networks: [default, workspace-control]
     ports:
       - "8080:8080"
     depends_on:
@@ -52,5 +57,62 @@ services:
       backend:
         condition: service_healthy
 
+  runner:
+    build: ./runner
+    image: devhub-runner:local
+    profiles: [workspaces]
+    restart: unless-stopped
+    environment:
+      DEVHUB_RUNNER_TOKEN: ${DEVHUB_RUNNER_TOKEN:-}
+      DEVHUB_BACKEND_URL: http://backend:8080
+      WORKSPACE_IMAGE: devhub-workspace:local
+      RUNNER_BROKER_DIR: /run/dev-hub-brokers
+      WORKSPACE_CPUS: ${WORKSPACE_CPUS:-2}
+      WORKSPACE_MEMORY_BYTES: ${WORKSPACE_MEMORY_BYTES:-4294967296}
+      WORKSPACE_DISK_BYTES: ${WORKSPACE_DISK_BYTES:-5368709120}
+      RUNNER_MIN_FREE_BYTES: ${RUNNER_MIN_FREE_BYTES:-10737418240}
+      WORKSPACE_IDLE_SECONDS: ${WORKSPACE_IDLE_SECONDS:-1800}
+      WORKSPACE_MAX_RUNTIME_SECONDS: ${WORKSPACE_MAX_RUNTIME_SECONDS:-14400}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/dev-hub-brokers:/run/dev-hub-brokers
+      - runner-state:/data
+    networks: [workspace-control]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      workspace-image:
+        condition: service_completed_successfully
+      workspace-egress:
+        condition: service_started
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:8090/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  workspace-image:
+    build: ./runner/workspace
+    image: devhub-workspace:local
+    profiles: [workspaces]
+    command: ["true"]
+    network_mode: none
+
+  workspace-egress:
+    build: ./runner/egress
+    image: devhub-egress:local
+    container_name: dev-hub-workspace-egress
+    profiles: [workspaces]
+    restart: unless-stopped
+    networks: [workspace-egress-public]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  workspace-control:
+    internal: true
+  workspace-egress-public:
+
 volumes:
+  runner-state:
   postgres-data:

@@ -1,7 +1,7 @@
 import http from 'node:http';
 
 export class DockerError extends Error {
-  constructor(status) { super('Docker request failed (' + status + ')'); this.status = status; }
+  constructor(status, operation = '', detail = '') { super('Docker request failed (' + status + ') ' + operation + ': ' + detail); this.status = status; }
 }
 export function demux(buffer) {
   const chunks = []; let position = 0;
@@ -27,7 +27,9 @@ export class Docker {
         });
         response.on('error', reject);
         response.on('end', () => {
-          if (response.statusCode >= 300) { reject(new DockerError(response.statusCode)); return; }
+          if (response.statusCode >= 300) { let detail = '';
+            try { detail = String(JSON.parse(Buffer.concat(chunks).toString()).message || '').slice(0, 500); } catch {}
+            reject(new DockerError(response.statusCode, method + ' ' + path.split('?')[0], detail)); return; }
           const data = Buffer.concat(chunks);
           try { resolve(raw ? data : data.length ? JSON.parse(data.toString()) : null); } catch (e) { reject(e); }
         });
