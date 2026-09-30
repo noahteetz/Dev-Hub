@@ -13,7 +13,7 @@ public class HttpWorkspaceRunner implements WorkspaceRunner {
     private final WorkspaceSettings settings;
     public HttpWorkspaceRunner(WorkspaceSettings settings) { this.settings = settings; }
     private RestClient client() {
-        var factory = new JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
+        var factory = new JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder().version(java.net.http.HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(5)).build());
         factory.setReadTimeout(Duration.ofSeconds(120));
         return RestClient.builder().baseUrl(settings.runnerUrl).requestFactory(factory)
                 .defaultHeader("X-Runner-Token", settings.runnerToken).build();

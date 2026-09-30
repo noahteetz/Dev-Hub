@@ -53,7 +53,10 @@ test('PostgreSQL + Spring + HTTP runner + real WebSocket/PTY: reconnect, renewal
       WORKSPACE_IMAGE: 'devhub-workspace:ci', EGRESS_PROXY_CONTAINER: 'devhub-ci-proxy', RUNNER_MIN_FREE_BYTES: '0'},
     stdio: 'inherit'});
   t.after(async () => {
-    child.kill('SIGTERM'); await new Promise(resolve => child.once('exit', resolve));
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = new Promise(resolve => child.once('exit', resolve));
+      child.kill('SIGTERM'); await exited;
+    }
     await fs.rm(root, {recursive: true, force: true});
   });
   for (let i = 0; i < 120; i++) {
@@ -98,6 +101,11 @@ test('PostgreSQL + Spring + HTTP runner + real WebSocket/PTY: reconnect, renewal
   await command(finalSocket, 'cat e2e-file.txt', 'keep'); finalSocket.close();
   await request('POST', '/api/workspaces/' + workspace.id + '/stop'); await waitStatus(workspace.id, 'STOPPED');
   await request('DELETE', '/api/workspaces/' + workspace.id, {discard: true, confirmation: workspace.id});
-  await waitStatus(workspace.id, 'DELETED');
+  for (let i = 0; i < 180; i++) {
+    const retained = await request('GET', '/api/workspaces');
+    if (!retained.some(w => w.id === workspace.id)) break;
+    if (i === 179) throw new Error('Deleted workspace remained in retained workspaces');
+    await sleep(500);
+  }
   await request('DELETE', '/api/projects/' + project.id);
 });

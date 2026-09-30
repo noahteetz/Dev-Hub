@@ -15,6 +15,7 @@ export function TerminalPane({ terminal }: { terminal: WorkspaceTerminal }) {
     if (!container.current) return
     let alive = true
     let socket: WebSocket | null = null
+    let queuedOutput = 0
     let renewal: ReturnType<typeof setInterval> | null = null
     const term = new Terminal({ cursorBlink: true, convertEol: false, scrollback: 3000, fontSize: 13,
       theme: { background: '#10141c', foreground: '#e6edf3' } })
@@ -31,7 +32,14 @@ export function TerminalPane({ terminal }: { terminal: WorkspaceTerminal }) {
     const input = term.onData(data => {
       if (socket?.readyState !== WebSocket.OPEN) return
       // Bound input frames, including a large paste; do not queue after disconnection.
-      for (let i = 0; i < data.length; i += 2048) socket.send(JSON.stringify({ type: 'input', data: data.slice(i, i + 2048) }))
+      let offset = 0
+      while (offset < data.length) {
+        let end = Math.min(offset + 2048, data.length)
+        const last = data.charCodeAt(end - 1)
+        if (end < data.length && last >= 0xd800 && last <= 0xdbff) end--
+        socket.send(JSON.stringify({ type: 'input', data: data.slice(offset, end) }))
+        offset = end
+      }
     })
     api.workspaces.ticket(terminal.workspaceId, terminal.id).then(ticket => {
       if (!alive) return
@@ -51,10 +59,19 @@ export function TerminalPane({ terminal }: { terminal: WorkspaceTerminal }) {
         }, 60000)
       }
       socket.onmessage = event => {
-        if (alive && event.data instanceof ArrayBuffer) term.write(new Uint8Array(event.data))
+        if (!alive || !(event.data instanceof ArrayBuffer)) return
+        const bytes = new Uint8Array(event.data)
+        queuedOutput += bytes.byteLength
+        if (queuedOutput > 512 * 1024) {
+          setError('Terminal output exceeded the browser buffer. Reconnect to continue.')
+          socket?.close()
+          return
+        }
+        term.write(bytes, () => { queuedOutput -= bytes.byteLength })
       }
       socket.onerror = () => { if (alive) setError('The terminal connection failed. Reconnect when the workspace is available.') }
-      socket.onclose = () => {
+      socket.onclose = event => {
+        if (alive && event.code === 1008) setError('Terminal authorization expired or input exceeded its limit. Reconnect to continue.')
         if (renewal) clearInterval(renewal)
         if (alive) setStatus('Disconnected')
       }

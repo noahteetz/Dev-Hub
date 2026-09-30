@@ -84,6 +84,11 @@ test('real Docker: clone, private profiles, terminal reconnect, stop/resume, lim
   });
   assert.equal(await socketRequest({host: 'github.com', path: 'octocat/Hello-World'}), 200);
   assert.equal(await socketRequest({host: 'github.com', path: 'someone/else'}), 403);
+  const credential = await read('bash', '-c', "printf 'protocol=https\\nhost=github.com\\npath=octocat/Hello-World.git\\n\\n' | git credential fill");
+  assert.equal(credential.code, 0);
+  assert.match(credential.output, /password=fake-token/); // only synthetic credentials in this fixture
+  const refusedCredential = await read('bash', '-c', "printf 'protocol=https\\nhost=github.com\\npath=someone/else.git\\n\\n' | git credential fill");
+  assert.notEqual(refusedCredential.code, 0);
   await manager.terminal(id, {id: terminal, ownerId, provider: 'SHELL', profileId: null});
   const browser = new Browser(); await manager.attach(id, terminal, browser);
   browser.emit('message', Buffer.from(JSON.stringify({type: 'resize', cols: 100, rows: 30})), false);
