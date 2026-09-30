@@ -10,9 +10,10 @@ RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/cod
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
     && if [ -n "$existing_user" ]; then usermod --login workspace --home /home/workspace --move-home --shell /bin/bash "$existing_user"; \
        else useradd --uid 1000 --create-home --shell /bin/bash workspace; fi
-COPY bootstrap.sh profile-init.sh /usr/local/bin/
+COPY bootstrap.sh profile-init.sh profile-shell.sh /usr/local/bin/
+COPY devhub-bashrc /usr/local/share/devhub-bashrc
 COPY git-credential.mjs /usr/local/bin/devhub-git-credential
-RUN chmod 0755 /usr/local/bin/bootstrap.sh /usr/local/bin/profile-init.sh /usr/local/bin/devhub-git-credential
+RUN chmod 0755 /usr/local/bin/bootstrap.sh /usr/local/bin/profile-init.sh /usr/local/bin/profile-shell.sh /usr/local/bin/devhub-git-credential
 ENV HOME=/home/workspace LANG=C.UTF-8 TERM=xterm-256color
 USER 1000:1000
 WORKDIR /workspace

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-repo_url="$1"
+repo_url="$1.git"
 branch="$2"
 create_branch="$3"
 commit_name="$4"

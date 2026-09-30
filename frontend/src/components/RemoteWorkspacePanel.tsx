@@ -134,7 +134,7 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
                       setTerminals(ts => [...ts, t]); setSelected(t.id)
                     })}>Open terminal</Button>
                   </Stack>
-                  <Typography variant="body2">Use your own account: Claude /login or Codex login --device-auth. <Link to="/settings">Manage profiles</Link></Typography>
+                  <Typography variant="body2">Profile terminals open a shell for your selected account. Run claude and /login, or codex login --device-auth followed by codex. <Link to="/settings">Manage profiles</Link></Typography>
                   <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
                     {terminals.map((t, index) => <Button key={t.id} size="small" variant={selected === t.id ? 'contained' : 'outlined'} onClick={() => setSelected(t.id)}>{t.provider} {index + 1}</Button>)}
                   </Stack>

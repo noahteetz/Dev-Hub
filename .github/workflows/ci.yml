@@ -123,6 +123,11 @@ jobs:
           java -jar backend-ci/backend-0.0.1-SNAPSHOT.jar --server.port=18080 > /tmp/devhub-backend-ci.log 2>&1 &
       - name: Test complete HTTP and WebSocket path
         run: sudo env PATH="$PATH" node --test runner/test/e2e.integration.mjs
+      - name: Proxy diagnostics
+        if: failure()
+        run: |
+          docker inspect devhub-ci-proxy --format '{{.State.Status}} {{.State.Error}}'
+          docker logs --tail 60 devhub-ci-proxy
       - name: Backend diagnostics
         if: failure()
         run: tail -n 100 /tmp/devhub-backend-ci.log 2>/dev/null || true

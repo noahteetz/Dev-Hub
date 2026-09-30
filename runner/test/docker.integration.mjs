@@ -32,6 +32,13 @@ test('real Docker: clone, private profiles, terminal reconnect, stop/resume, lim
     image: 'devhub-workspace:ci', proxyContainer: 'devhub-ci-proxy',
     backend: 'http://127.0.0.1:' + backend.address().port, token});
   await manager.initialize();
+  const exec = manager.docker.exec.bind(manager.docker);
+  manager.docker.exec = async (...args) => {
+    const result = await exec(...args);
+    // This fixture uses only a public repository and fake credentials.
+    if (result.code !== 0 && args[1]?.[0] === 'bootstrap.sh') process.stderr.write('CI bootstrap: ' + result.output + '\n');
+    return result;
+  };
   const id = randomUUID(), terminal = randomUUID(), profile = randomUUID(), otherProfile = randomUUID();
   const ownerId = 95000, otherOwner = 95001;
   const input = {id, ownerId, repositoryUrl: 'https://github.com/octocat/Hello-World',

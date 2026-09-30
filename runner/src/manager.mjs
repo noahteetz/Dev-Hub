@@ -138,9 +138,14 @@ export class Manager {
       await this.docker.request('POST', '/networks/' + name + '/connect', {Container: proxy.Id, EndpointConfig: {Aliases: ['egress']}});
   }
   async cleanNetwork(id) {
-    try {
-      await this.docker.request('POST', '/networks/' + this.network(id) + '/disconnect', {Container: this.proxyContainer, Force: true});
-    } catch (e) { if (![404, 403].includes(e.status)) throw e; }
+    let network;
+    try { network = await this.docker.request('GET', '/networks/' + this.network(id)); }
+    catch (e) { if (e.status === 404) return; throw e; }
+    const proxy = await this.docker.inspect(this.proxyContainer);
+    if (proxy && network.Containers?.[proxy.Id]) {
+      try { await this.docker.request('POST', '/networks/' + this.network(id) + '/disconnect', {Container: proxy.Id, Force: true}); }
+      catch (e) { if (e.status !== 404 && !e.message.includes('is not connected to the network')) throw e; }
+    }
     try { await this.docker.request('DELETE', '/networks/' + this.network(id)); }
     catch (e) { if (e.status !== 404) throw e; }
   }
@@ -309,14 +314,13 @@ export class Manager {
       if (existing) return;
       if ((meta.terminals || []).length >= 8) throw new Error('Too many terminals');
       const env = [];
-      let command = 'exec bash -l';
+      const command = 'exec profile-shell.sh';
       if (input.provider !== 'SHELL') {
         uuid(input.profileId);
         const provider = input.provider.toLowerCase();
         const init = await this.docker.exec(this.name(id), ['profile-init.sh', provider, input.profileId]);
         if (init.code !== 0) throw new Error('Profile directory unavailable');
         env.push('-e', (provider === 'claude' ? 'CLAUDE_CONFIG_DIR=' : 'CODEX_HOME=') + '/profiles/' + provider + '/' + input.profileId);
-        command = 'exec ' + provider;
       }
       const result = await this.docker.exec(this.name(id), ['tmux', 'new-session', '-d', '-s', input.id,
         '-c', '/workspace/repo', ...env, 'bash', '-lc', 'umask 077; ' + command]);
