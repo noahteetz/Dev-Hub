@@ -13,6 +13,6 @@
     "lint": "node --check src/server.mjs && node --check src/docker.mjs && node --check src/manager.mjs && node --check src/git-safety.mjs"
   },
   "dependencies": {
-    "ws": "8.18.3"
+    "ws": "8.22.0"
   }
 }
