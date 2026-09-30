@@ -134,5 +134,21 @@ class WorkspaceIntegrationTests {
         repository.complete(w, "RUNNING", "");
         assertThat(repository.find(w.id()).orElseThrow().status()).isEqualTo("STOPPING");
     }
+    @Test void retainedStoppedWorkspacesCannotStarveNewLifecycleOperations() {
+        for (int i = 0; i < 101; i++) {
+            var oldProject = as(owner, () -> projects.create(new ProjectRequest("Retained", "",
+                    "https://github.com/example/repository", "", List.of())));
+            var retained = as(owner, () -> service.create(oldProject.id(), input()));
+            as(owner, () -> service.stop(retained.id()));
+            repository.complete(repository.find(retained.id()).orElseThrow(), "STOPPED", "");
+        }
+        var pending = create(editor);
+        assertThat(repository.reconcileCandidates()).extracting(Workspace::id).containsExactly(pending.id());
+        settings.workerEnabled = true;
+        try { worker.reconcile(); }
+        finally { settings.workerEnabled = false; }
+        verify(runner).start(argThat(value -> value.id().equals(pending.id())));
+        assertThat(repository.find(pending.id()).orElseThrow().status()).isEqualTo("RUNNING");
+    }
     private <T> T as(long user, Supplier<T> action) { return currentUser.runAs(user, action); }
 }

@@ -60,7 +60,7 @@ public class WorkspaceRepository {
                 """, state, switch (state) { case "RUNNING" -> "PROVISIONING"; case "STOPPED" -> "STOPPING"; default -> "DELETING"; }, id);
     }
     public List<Workspace> reconcileCandidates() {
-        return jdbc.query("SELECT * FROM workspaces WHERE status <> 'DELETED' ORDER BY updated_at LIMIT 100", WorkspaceRepository::map);
+        return jdbc.query("SELECT * FROM workspaces WHERE status <> 'DELETED' AND status <> 'ERROR' AND (status <> desired OR status = 'RUNNING') ORDER BY updated_at LIMIT 100", WorkspaceRepository::map);
     }
     public boolean claim(Workspace w) {
         return jdbc.update("""
