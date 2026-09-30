@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {WebSocket} from 'ws';
 import {StringDecoder} from 'node:string_decoder';
+import http from 'node:http';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const token = 'test-only-runner-token-at-least-32-characters';
 const backend = 'http://localhost:18080';
@@ -68,6 +69,13 @@ test('PostgreSQL + Spring + HTTP runner + real WebSocket/PTY: reconnect, renewal
     await sleep(500);
   }
   assert.equal((await request('GET', '/api/workspaces/config')).allowed, true);
+  const unauthorized = await new Promise((resolve, reject) => {
+    const request = http.get('http://localhost:18090/workspaces', {headers: {'X-Runner-Token': 'é'.repeat(token.length)}}, response => {
+      response.resume(); response.on('end', () => resolve(response.statusCode));
+    });
+    request.on('error', reject);
+  });
+  assert.equal(unauthorized, 403, 'non-ASCII invalid tokens must not crash constant-time authentication');
   const project = await request('POST', '/api/projects', {name: 'CI workspace', description: '',
     repositoryUrl: 'https://github.com/octocat/Hello-World', deploymentUrl: '', links: []});
   const workspace = await request('POST', '/api/projects/' + project.id + '/workspaces', {
@@ -85,7 +93,7 @@ test('PostgreSQL + Spring + HTTP runner + real WebSocket/PTY: reconnect, renewal
   await assert.rejects(connect(workspace.id, terminal.id, ticket.ticket));
   const next = await request('POST', '/api/workspaces/' + workspace.id + '/terminals/' + terminal.id + '/ticket');
   const resumed = await connect(workspace.id, terminal.id, next.ticket);
-  await command(resumed, 'cat e2e-file.txt', 'keep'); resumed.close();
+  await command(resumed, 'test "$(cat e2e-file.txt)" = keep && printf "RECONNECT_%s\\n" OK', 'RECONNECT_OK'); resumed.close();
   await request('POST', '/api/workspaces/' + workspace.id + '/stop');
   await waitStatus(workspace.id, 'STOPPED');
   const report = await request('POST', '/api/workspaces/' + workspace.id + '/deletion-check');
@@ -98,7 +106,7 @@ test('PostgreSQL + Spring + HTTP runner + real WebSocket/PTY: reconnect, renewal
   const again = await request('POST', '/api/workspaces/' + workspace.id + '/terminals', {provider: 'SHELL', profileId: null});
   const finalTicket = await request('POST', '/api/workspaces/' + workspace.id + '/terminals/' + again.id + '/ticket');
   const finalSocket = await connect(workspace.id, again.id, finalTicket.ticket);
-  await command(finalSocket, 'cat e2e-file.txt', 'keep'); finalSocket.close();
+  await command(finalSocket, 'test "$(cat e2e-file.txt)" = keep && printf "RESUME_%s\\n" OK', 'RESUME_OK'); finalSocket.close();
   await request('POST', '/api/workspaces/' + workspace.id + '/stop'); await waitStatus(workspace.id, 'STOPPED');
   await request('DELETE', '/api/workspaces/' + workspace.id, {discard: true, confirmation: workspace.id});
   for (let i = 0; i < 180; i++) {

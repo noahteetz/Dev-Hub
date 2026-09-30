@@ -218,7 +218,7 @@ export class Manager {
       const disk = await fs.statfs(this.data);
       if (Number(disk.bavail) * Number(disk.bsize) < this.minFree) throw new Error('Runner free space below reserve');
       const meta = {...previous, ...input, initialized: previous?.initialized || false,
-        status: 'PROVISIONING', startedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString(), terminals: previous?.terminals || []};
+        status: 'PROVISIONING', reason: '', startedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString(), terminals: previous?.terminals || []};
       await this.write(meta);
       await this.initVolumes(meta);
       await this.broker(meta);
@@ -231,6 +231,7 @@ export class Manager {
     }));
   }
   async stopRuntime(meta) {
+    this.activity.delete(meta.id);
     for (const [key, connection] of this.connections) if (key.startsWith(meta.id + ':')) { connection.close(); this.connections.delete(key); }
     await this.docker.remove(this.name(meta.id)); await this.docker.remove(this.name(meta.id, true));
     await this.cleanNetwork(meta.id); await this.closeBroker(meta.id);
@@ -355,6 +356,12 @@ export class Manager {
     const tty = await this.docker.tty(this.name(id), ['tmux', 'attach-session', '-t', terminal]);
     if (socket.readyState !== 1) { tty.stream.destroy(); throw new Error('Terminal disconnected'); }
     let closed = false;
+    let inputReady = false;
+    let pendingBytes = 0;
+    const pendingInput = [];
+    const writeInput = data => {
+      if (!tty.stream.write(data)) { socket.pause(); tty.stream.once('drain', () => socket.resume()); }
+    };
     const close = () => {
       if (closed) return; closed = true; tty.stream.destroy();
       if (socket.readyState === 1) socket.close(1000);
@@ -363,6 +370,13 @@ export class Manager {
     this.connections.set(key, {socket, close});
     tty.stream.on('data', chunk => {
       if (socket.readyState !== 1) { close(); return; }
+      // Docker's upgrade can finish before tmux configures the PTY. tmux flushes
+      // early input while entering raw mode; its first output follows that setup.
+      if (!inputReady) {
+        inputReady = true;
+        for (const data of pendingInput) writeInput(data);
+        pendingInput.length = 0; pendingBytes = 0;
+      }
       tty.stream.pause();
       if (socket.bufferedAmount > 512 * 1024) { close(); return; }
       socket.send(chunk, {binary: true}, error => { if (error) close(); else tty.stream.resume(); });
@@ -374,7 +388,12 @@ export class Manager {
         if (binary || raw.length > 32768) throw new Error();
         const message = JSON.parse(raw.toString());
         if (message.type === 'input' && typeof message.data === 'string' && Buffer.byteLength(message.data) <= 16384) {
-          if (!tty.stream.write(message.data)) { socket.pause(); tty.stream.once('drain', () => socket.resume()); }
+          if (inputReady) writeInput(message.data);
+          else {
+            pendingBytes += Buffer.byteLength(message.data);
+            if (pendingBytes > 65536) throw new Error('Terminal input buffer full');
+            pendingInput.push(message.data);
+          }
           // Activity timestamps do not require persisting for every keystroke.
           this.activity.set(id, new Date().toISOString());
         } else if (message.type === 'resize' && Number.isInteger(message.cols) && Number.isInteger(message.rows)

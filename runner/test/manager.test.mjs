@@ -2,6 +2,43 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {credentialMatches, uuid, repoUrl, Serial, Manager} from '../src/manager.mjs';
 import {demux} from '../src/docker.mjs';
+import {EventEmitter} from 'node:events';
+
+async function terminalFixture() {
+  const stream = new EventEmitter(), socket = new EventEmitter(), input = [];
+  stream.write = data => { input.push(data); return true; };
+  stream.pause = stream.resume = stream.destroy = () => {};
+  socket.readyState = 1; socket.bufferedAmount = 0;
+  socket.pause = socket.resume = () => {};
+  socket.send = (_data, _options, callback) => callback();
+  socket.close = code => { socket.readyState = 3; socket.closeCode = code; socket.emit('close'); };
+  const id = '11111111-2222-3333-4444-555555555555', terminal = '11111111-2222-3333-4444-555555555556';
+  const manager = new Manager({docker: {tty: async () => ({stream, resize: async () => {}})}, token: 'test'});
+  manager.read = async () => ({id, status: 'RUNNING', terminals: [{id: terminal}]});
+  manager.write = async () => {};
+  await manager.attach(id, terminal, socket);
+  const send = data => socket.emit('message', Buffer.from(JSON.stringify({type: 'input', data})), false);
+  return {stream, socket, input, send};
+}
+
+test('early terminal input waits for tmux output instead of being flushed during PTY setup', async () => {
+  const {stream, socket, input, send} = await terminalFixture();
+  send('first command\n'); send('Ünicode\n');
+  assert.deepEqual(input, []);
+  stream.emit('data', Buffer.from('\u001b[?1049h'));
+  assert.deepEqual(input, ['first command\n', 'Ünicode\n']);
+  send('next command\n');
+  assert.deepEqual(input, ['first command\n', 'Ünicode\n', 'next command\n']);
+  socket.close(1000);
+});
+
+test('input queued before tmux is ready is bounded and discarded on disconnect', async () => {
+  const {stream, socket, input, send} = await terminalFixture();
+  for (let i = 0; i < 5; i++) send('x'.repeat(16384));
+  assert.equal(socket.closeCode, 1008);
+  stream.emit('data', Buffer.from('ready'));
+  assert.deepEqual(input, []);
+});
 test('credential broker is restricted to the exact HTTPS repository', () => {
   assert.equal(credentialMatches('https://github.com/a/b', 'github.com', 'a/b.git'), true);
   for (const [host, path] of [['github.com', 'a/other'], ['gitlab.com', 'a/b'], ['github.com:443', 'a/b'], ['github.com', 'a/%62']])

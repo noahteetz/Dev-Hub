@@ -7,8 +7,9 @@ const token = process.env.DEVHUB_RUNNER_TOKEN || '';
 if (token.length < 32) throw new Error('DEVHUB_RUNNER_TOKEN must contain at least 32 characters');
 function authorized(request) {
   const supplied = request.headers['x-runner-token'];
-  return typeof supplied === 'string' && supplied.length === token.length
-    && timingSafeEqual(Buffer.from(supplied), Buffer.from(token));
+  if (typeof supplied !== 'string') return false;
+  const actual = Buffer.from(supplied), expected = Buffer.from(token);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 const manager = new Manager();
 await manager.initialize();
