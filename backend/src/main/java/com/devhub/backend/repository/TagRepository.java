@@ -29,6 +29,31 @@ public class TagRepository {
 		);
 	}
 
+	/** Tags actually attached to entries in this project, across all four content types. */
+	public List<Tag> findAllForProject(long ownerId, long projectId) {
+		return jdbcTemplate.query(
+				"""
+				SELECT t.id, t.name FROM tags t
+					WHERE t.owner_id = ? AND t.id IN (
+						SELECT nt.tag_id FROM note_tags nt
+							JOIN notes n ON n.id = nt.note_id WHERE n.project_id = ?
+						UNION
+						SELECT st.tag_id FROM snippet_tags st
+							JOIN code_snippets s ON s.id = st.snippet_id WHERE s.project_id = ?
+						UNION
+						SELECT it.tag_id FROM idea_tags it
+							JOIN ideas i ON i.id = it.idea_id WHERE i.project_id = ?
+						UNION
+						SELECT tt.tag_id FROM todo_tags tt
+							JOIN todos d ON d.id = tt.todo_id WHERE d.project_id = ?
+					)
+					ORDER BY t.name
+				""",
+				TagRepository::mapRow,
+				ownerId, projectId, projectId, projectId, projectId
+		);
+	}
+
 	public Optional<Tag> findByName(long ownerId, String name) {
 		return jdbcTemplate.query(
 				"SELECT id, name FROM tags WHERE name = ? AND owner_id = ?",

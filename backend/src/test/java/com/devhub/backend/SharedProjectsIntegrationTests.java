@@ -333,6 +333,68 @@ class SharedProjectsIntegrationTests {
 		assertThatThrownBy(() -> as(alice, () -> content.promote(ContentType.IDEA, idea.id()))).isInstanceOf(ConflictException.class);
 	}
 
+
+	@Test
+	void aRemovedReferenceAuthorCannotDeleteProjectLinks() {
+		Note note = as(alice, () -> notes.create(shared.id(), new NoteRequest("Source", "text")));
+		Idea idea = as(alice, () -> ideas.create(shared.id(), new IdeaRequest("Target", "", List.of())));
+		EntityReference link = as(ed, () -> references.create(new EntityReferenceRequest(EntityType.NOTE, note.id(), EntityType.IDEA, idea.id())));
+
+		run(alice, () -> members.remove(shared.id(), ed));
+
+		assertNotFound(ed, () -> references.delete(link.id()));
+		assertThat(as(alice, () -> references.outgoing(EntityType.NOTE, note.id())))
+				.extracting(EntityReference::id).containsExactly(link.id());
+		run(alice, () -> references.delete(link.id()));
+		assertThat(as(alice, () -> references.outgoing(EntityType.NOTE, note.id()))).isEmpty();
+	}
+
+	@Test
+	void aReferenceAuthorDowngradedToViewerCannotDeleteProjectLinks() {
+		Note note = as(alice, () -> notes.create(shared.id(), new NoteRequest("Source", "text")));
+		Idea idea = as(alice, () -> ideas.create(shared.id(), new IdeaRequest("Target", "", List.of())));
+		EntityReference link = as(ed, () -> references.create(new EntityReferenceRequest(EntityType.NOTE, note.id(), EntityType.IDEA, idea.id())));
+
+		run(alice, () -> members.changeRole(shared.id(), ed, new ProjectMemberRoleRequest(ProjectRole.VIEWER)));
+
+		assertNotFound(ed, () -> references.delete(link.id()));
+		assertThat(as(ed, () -> references.outgoing(EntityType.NOTE, note.id())))
+				.extracting(EntityReference::id).containsExactly(link.id());
+	}
+
+	@Test
+	void aFormerMemberCanStillDeleteLinksFromTheirOwnInbox() {
+		Note note = as(alice, () -> notes.create(shared.id(), new NoteRequest("Shared target", "text")));
+		ContentEntry inbox = as(ed, () -> content.capture(new InboxCaptureRequest(ContentType.NOTE, "Own source", "", List.of(), "", "")));
+		EntityReference link = as(ed, () -> references.create(new EntityReferenceRequest(EntityType.NOTE, inbox.id(), EntityType.NOTE, note.id())));
+
+		run(alice, () -> members.remove(shared.id(), ed));
+		run(ed, () -> references.delete(link.id()));
+
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM entity_references WHERE id = ?", Integer.class, link.id())).isZero();
+	}
+
+	@Test
+	void membersGetOnlyTagsUsedInThisProjectAcrossAllContentTypes() {
+		as(alice, () -> content.capture(new InboxCaptureRequest(ContentType.NOTE, "Private inbox", "", List.of("private-inbox"), "", "")));
+		Project privateProject = as(alice, () -> projects.create(new ProjectRequest("Private project", "", "", "", List.of())));
+		as(alice, () -> ideas.create(privateProject.id(), new IdeaRequest("Private idea", "", List.of("private-project"))));
+		for (ContentType type : ContentType.values()) {
+			ContentEntry entry = as(alice, () -> content.capture(new InboxCaptureRequest(type, "Shared " + type, "body", List.of(type.name().toLowerCase(), "common"), "", "text")));
+			as(alice, () -> content.assign(type, entry.id(), new ContentAssignmentRequest(shared.id())));
+		}
+
+		for (long member : List.of(ed, vera)) {
+			assertThat(as(member, () -> tags.findAllForProject(shared.id())))
+					.extracting(Tag::name).containsExactly("common", "idea", "note", "snippet", "todo");
+		}
+		assertThat(as(alice, () -> tags.findAllForProject(shared.id())))
+				.extracting(Tag::name).contains("private-inbox", "private-project");
+		assertNotFound(nina, () -> tags.findAllForProject(shared.id()));
+		run(alice, () -> members.remove(shared.id(), ed));
+		assertNotFound(ed, () -> tags.findAllForProject(shared.id()));
+	}
+
 	private static ProjectContextRequest context(String nextStep) {
 		return new ProjectContextRequest("", nextStep, "", "", "", "");
 	}

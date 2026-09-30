@@ -74,11 +74,6 @@ public class EntityReferenceRepository {
 		return jdbc.update("DELETE FROM entity_references WHERE id = ?", id);
 	}
 
-	public boolean createdByCurrentUser(long id) {
-		Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM entity_references WHERE id = ? AND owner_id = ?", Integer.class, id, currentUser.id());
-		return count != null && count > 0;
-	}
-
 	/** Resolves the display title of an entry, or empty when it does not exist or the user may not see it. */
 	public Optional<String> title(EntityType type, long id) {
 		long me = currentUser.id();

@@ -68,9 +68,9 @@ public class EntityReferenceService {
 	public void delete(long id) {
 		EntityReference reference = references.find(id)
 				.orElseThrow(() -> new ResourceNotFoundException("Reference " + id + " was not found"));
-		boolean allowed = references.createdByCurrentUser(id)
-				|| (references.title(reference.sourceType(), reference.sourceId()).isPresent()
-					&& canWrite(reference.sourceType(), reference.sourceId()));
+		// Authorship does not grant access after a membership was removed or downgraded.
+		boolean allowed = references.title(reference.sourceType(), reference.sourceId()).isPresent()
+				&& canWrite(reference.sourceType(), reference.sourceId());
 		if (!allowed) {
 			throw new ResourceNotFoundException("Reference " + id + " was not found");
 		}

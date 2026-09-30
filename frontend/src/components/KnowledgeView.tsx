@@ -100,8 +100,8 @@ export function KnowledgeView({ mode, projects, version, onCapture, onEdit, onCh
   const key = (entry: ContentEntry) => `${entry.type}-${entry.id}`
 
   async function mutate(action: () => Promise<unknown>, projectChanged = false) {
-    try { await action(); setSelected(new Set()); await load(); onChanged(); if (projectChanged) onProjectsChanged() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'The action failed.') }
+    try { await action(); setSelected(new Set()); await load(); onChanged(); if (projectChanged) onProjectsChanged(); return true }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'The action failed.'); return false }
   }
 
   async function bulkAssign(projectId: string) {
@@ -110,9 +110,18 @@ export function KnowledgeView({ mode, projects, version, onCapture, onEdit, onCh
   }
 
   async function assignOne(entry: ContentEntry, projectId: number) {
-    await mutate(() => api.content.assign(entry, projectId))
+    if (!await mutate(() => api.content.assign(entry, projectId))) return
     const recent = [projectId, ...recentProjectIds.filter((id) => id !== projectId)].slice(0, 5)
-    setRecentProjectIds(recent); localStorage.setItem('devhub.recentProjects', JSON.stringify(recent)); setLastAssigned(entry)
+    setRecentProjectIds(recent); localStorage.setItem('devhub.recentProjects', JSON.stringify(recent)); setLastAssigned({ ...entry, projectId })
+  }
+
+  const lastAssignedProject = projects.find((project) => project.id === lastAssigned?.projectId)
+  const canUndoAssignment = lastAssignedProject !== undefined && projectCan(lastAssignedProject, 'detachContent')
+
+  async function undoAssignment() {
+    if (lastAssigned && canUndoAssignment && await mutate(() => api.content.assign(lastAssigned, null))) {
+      setLastAssigned(null)
+    }
   }
 
   const title = mode === 'inbox' ? 'Inbox' : mode === 'notes' ? 'All notes' : 'All ideas'
@@ -146,7 +155,7 @@ export function KnowledgeView({ mode, projects, version, onCapture, onEdit, onCh
         </Stack>
         {selected.size ? <Card variant="outlined" sx={{ mb: 2 }}><CardContent><Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}><Typography>{selected.size} selected</Typography><Autocomplete getOptionLabel={(project) => project.name} options={orderedProjects} sx={{ minWidth: 260 }} onChange={(_, project) => { if (project) void bulkAssign(String(project.id)) }} renderInput={(params) => <TextField {...params} label="Assign selected to…" size="small" />} /></Stack></CardContent></Card> : null}
         {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
-        {lastAssigned ? <Alert action={<Button color="inherit" onClick={() => void mutate(() => api.content.assign(lastAssigned, null)).then(() => setLastAssigned(null))}>Undo</Button>} severity="success" sx={{ mb: 2 }}>{lastAssigned.title} was assigned to a project.</Alert> : null}
+        {lastAssigned ? <Alert action={canUndoAssignment ? <Button color="inherit" onClick={() => void undoAssignment()}>Undo</Button> : undefined} severity="success" sx={{ mb: 2 }}>{lastAssigned.title} was assigned to a project.{canUndoAssignment ? '' : ' Only the project owner can move it back to an inbox.'}</Alert> : null}
         {loading ? <Stack sx={{ alignItems: 'center', py: 8 }}><CircularProgress /></Stack> : null}
         {!loading && !visible.length ? <Card variant="outlined"><CardContent sx={{ py: 7, textAlign: 'center' }}><FolderOpenOutlinedIcon sx={{ color: 'primary.main', fontSize: 44 }} /><Typography variant="h6" sx={{ mt: 1 }}>{mode === 'inbox' ? 'Your inbox is clear' : 'No entries match'}</Typography><Typography color="text.secondary" sx={{ mb: 2 }}>{mode === 'inbox' ? 'Capture a thought now; you can file it into a project later.' : 'Adjust the filters or capture a new entry.'}</Typography><Button variant="contained" onClick={onCapture}>Quick capture</Button></CardContent></Card> : null}
         <Stack spacing={1.5}>{visible.map((entry) => {

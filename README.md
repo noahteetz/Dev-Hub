@@ -72,7 +72,8 @@ A few rules follow from that:
 
 - Content of a project belongs to the owner's data. The author of each entry is stored separately and shown in
   the project, so removing a member keeps what they wrote.
-- Entries of a shared project use the tags of the owner.
+- Entries of a shared project use the tags of the owner. Members only receive tag suggestions already used
+  in that project; tags confined to the owner's inbox or other projects stay private.
 - Only the owner refreshes the repository, and the hourly sync runs with the owner's Git token. Members read the
   cached state and never cause a request with somebody else's token.
 - A person without a role gets `404` for the project, a member whose role is too low gets `403`.
@@ -153,7 +154,7 @@ The backend exposes CRUD endpoints for projects and their stored information:
 - `/api/projects/{projectId}/code-snippets`
 - `/api/projects/{projectId}/ideas`
 - `/api/projects/{projectId}/todos`
-- `/api/tags`, or `/api/tags?projectId=` for the tags of a project's owner
+- `/api/tags` for your own tags, or `/api/tags?projectId=` for project suggestions (members see only tags used in that project)
 - `/api/git-credentials` and `/api/git-credentials/{provider}` for stored provider tokens
 - `/api/git-repositories`, `/api/git-repositories/owners` and `/api/git-repositories/import` for the picker
 

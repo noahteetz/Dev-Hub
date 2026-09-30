@@ -1,6 +1,7 @@
 package com.devhub.backend.service;
 
 import com.devhub.backend.model.Permission;
+import com.devhub.backend.model.ProjectAccess;
 import com.devhub.backend.model.Tag;
 import com.devhub.backend.repository.TagRepository;
 import com.devhub.backend.security.CurrentUser;
@@ -25,9 +26,12 @@ public class TagService {
 		return tagRepository.findAll(currentUser.id());
 	}
 
-	/** Entries of a project carry the tags of the project owner, whoever is looking. */
+	/** Owners use their full namespace; members only see tags used in the shared project. */
 	public List<Tag> findAllForProject(long projectId) {
-		return tagRepository.findAll(access.require(projectId, Permission.READ).ownerId());
+		ProjectAccess project = access.require(projectId, Permission.READ);
+		return project.ownerId() == currentUser.id()
+				? tagRepository.findAll(project.ownerId())
+				: tagRepository.findAllForProject(project.ownerId(), project.projectId());
 	}
 
 	List<Tag> resolveNames(long ownerId, List<String> names) {
