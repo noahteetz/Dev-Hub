@@ -1,0 +1,18 @@
+{
+  "name": "devhub-workspace-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:docker": "node --test test/docker.integration.mjs",
+    "lint": "node --check src/server.mjs && node --check src/docker.mjs && node --check src/manager.mjs && node --check src/git-safety.mjs"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
+  }
+}

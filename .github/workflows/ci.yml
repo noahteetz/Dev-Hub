@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, shared-projects]
+    branches: [main, shared-projects, remote-workspaces]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -57,3 +57,25 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  runner:
+    name: Runner tests and images
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install, check and test runner
+        working-directory: runner
+        run: |
+          npm ci
+          npm run lint
+          npm test
+      - name: Build runner image
+        run: docker build -t devhub-runner:ci runner
+      - name: Build workspace image
+        run: docker build -t devhub-workspace:ci runner/workspace
+      - name: Build egress proxy image
+        run: docker build -t devhub-egress:ci runner/egress

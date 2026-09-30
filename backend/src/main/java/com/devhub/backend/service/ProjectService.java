@@ -24,15 +24,18 @@ public class ProjectService {
 	private final ProjectRepository projectRepository;
 	private final RepositoryMetadataRepository repositoryMetadataRepository;
 	private final ProjectAccessService access;
+	private final com.devhub.backend.workspace.WorkspaceRepository workspaces;
 
 	public ProjectService(
 			ProjectRepository projectRepository,
 			RepositoryMetadataRepository repositoryMetadataRepository,
-			ProjectAccessService access
+			ProjectAccessService access,
+			com.devhub.backend.workspace.WorkspaceRepository workspaces
 	) {
 		this.projectRepository = projectRepository;
 		this.repositoryMetadataRepository = repositoryMetadataRepository;
 		this.access = access;
+		this.workspaces = workspaces;
 	}
 
 	@Transactional
@@ -151,9 +154,14 @@ public class ProjectService {
 		return getExisting(id);
 	}
 
+	@Transactional
 	public void delete(long projectId) {
 		long id = access.require(projectId, Permission.DELETE).projectId();
-		if (projectRepository.deleteById(id) == 0) {
+		if (workspaces.projectHasWorkspaces(id)) {
+            throw new com.devhub.backend.exception.ConflictException("Stop and delete this project's workspaces before deleting the project");
+        }
+        workspaces.purgeDeleted(id);
+        if (projectRepository.deleteById(id) == 0) {
 			throw notFound(id);
 		}
 	}
