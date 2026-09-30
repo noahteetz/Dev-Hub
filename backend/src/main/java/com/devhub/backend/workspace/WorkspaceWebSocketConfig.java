@@ -11,7 +11,6 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 import org.springframework.web.socket.server.HandshakeInterceptor;
-import org.springframework.web.util.UriComponentsBuilder;
 
 @Configuration
 @EnableWebSocket
@@ -30,8 +29,10 @@ public class WorkspaceWebSocketConfig implements WebSocketConfigurer {
                     if (!settings.enabled || Arrays.stream(origins).noneMatch(o -> o.equals(request.getHeaders().getOrigin()))) throw new IllegalArgumentException();
                     String[] path = request.getURI().getPath().split("/");
                     if (path.length != 7 || !path[6].equals("connect")) throw new IllegalArgumentException();
-                    var query = UriComponentsBuilder.fromUri(request.getURI()).build().getQueryParams();
-                    var grant = tickets.consume(query.getFirst("ticket"), path[3], path[5]);
+                    String ticket = request.getHeaders().getOrEmpty("Sec-WebSocket-Protocol").stream()
+                            .flatMap(h -> Arrays.stream(h.split(","))).map(String::trim)
+                            .filter(p -> p.startsWith("ticket.")).map(p -> p.substring(7)).findFirst().orElse(null);
+                    var grant = tickets.consume(ticket, path[3], path[5]);
                     attrs.put("grant", grant); return true;
                 } catch (RuntimeException e) { response.setStatusCode(HttpStatus.FORBIDDEN); return false; }
             }

@@ -19,7 +19,8 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-public class TerminalBridge extends TextWebSocketHandler {
+public class TerminalBridge extends TextWebSocketHandler implements org.springframework.web.socket.SubProtocolCapable {
+    @Override public java.util.List<String> getSubProtocols() { return java.util.List.of("devhub-terminal"); }
     private record Renewal(String type, String ticket) {}
     private static class Connection {
         final WebSocketSession browser;

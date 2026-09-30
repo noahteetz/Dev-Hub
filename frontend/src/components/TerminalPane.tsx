@@ -36,7 +36,7 @@ export function TerminalPane({ terminal }: { terminal: WorkspaceTerminal }) {
     api.workspaces.ticket(terminal.workspaceId, terminal.id).then(ticket => {
       if (!alive) return
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      socket = new WebSocket(protocol + '//' + window.location.host + '/api/workspaces/' + terminal.workspaceId + '/terminals/' + terminal.id + '/connect?ticket=' + encodeURIComponent(ticket.ticket))
+      socket = new WebSocket(protocol + '//' + window.location.host + '/api/workspaces/' + terminal.workspaceId + '/terminals/' + terminal.id + '/connect', ['devhub-terminal', 'ticket.' + ticket.ticket])
       socket.binaryType = 'arraybuffer'
       socket.onopen = () => {
         if (!alive) return

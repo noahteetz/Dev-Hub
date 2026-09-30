@@ -39,7 +39,10 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
     if (current.status === 'RUNNING') {
       const [sessions, stats] = await Promise.all([api.workspaces.terminals(current.id), api.workspaces.resources(current.id)])
       setTerminals(sessions); setResources(stats)
-    } else { setTerminals([]); setResources(null) }
+    } else {
+      setTerminals([])
+      setResources(current.status === 'STOPPED' ? await api.workspaces.resources(current.id) : null)
+    }
   }, [project.id])
   useEffect(() => {
     let alive = true

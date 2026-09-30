@@ -41,6 +41,8 @@ export class Manager {
     this.proxyContainer = options.proxyContainer || process.env.EGRESS_PROXY_CONTAINER || 'dev-hub-workspace-egress';
     this.backend = options.backend || process.env.DEVHUB_BACKEND_URL || 'http://backend:8080';
     this.token = options.token || process.env.DEVHUB_RUNNER_TOKEN;
+    this.maxRunning = number(process.env.WORKSPACE_MAX_RUNNING, 2, 1, 16);
+    this.startSerial = new Serial();
     this.cpu = number(process.env.WORKSPACE_CPUS, 2, 0.25, 16);
     this.memory = number(process.env.WORKSPACE_MEMORY_BYTES, 4294967296, 536870912, 34359738368);
     this.diskBudget = number(process.env.WORKSPACE_DISK_BYTES, 5368709120, 104857600, 107374182400);
@@ -163,7 +165,7 @@ export class Manager {
         ReadonlyRootfs: true, CapDrop: ['ALL'], CapAdd: init ? ['CHOWN', 'DAC_OVERRIDE', 'FOWNER'] : [],
         SecurityOpt: ['no-new-privileges:true'], Memory: this.memory, MemorySwap: this.memory, NanoCpus: Math.round(this.cpu * 1e9),
         PidsLimit: 256, Init: true, Tmpfs: {'/tmp': 'rw,nosuid,nodev,size=256m', '/run': 'rw,nosuid,nodev,size=16m'},
-        LogConfig: {Type: 'local', Config: {'max-size': '1m', 'max-file': '1'}}}};
+        LogConfig: {Type: 'local', Config: {'max-size': '1m', 'max-file': '2'}}}};
   }
   async initVolumes(meta) {
     for (const name of [this.volume(meta.id), this.home(meta.id), this.profiles(meta.ownerId)])
@@ -196,15 +198,18 @@ export class Manager {
       throw new Error('Invalid operation');
     if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/.test(input.branch) || /\.\.|\/\/|\/\.|\.lock$|[/.]$/.test(input.branch)) throw new Error('Invalid branch');
     for (const field of [input.commitName, input.commitEmail]) if (typeof field !== 'string' || !field || field.length > 255 || /[\x00-\x1f\x7f]/.test(field)) throw new Error('Invalid Git identity');
-    return this.serial.run(input.id, async () => {
+    return this.startSerial.run('start', () => this.serial.run(input.id, async () => {
       const previous = await this.read(input.id);
       if (previous && (input.generation < previous.generation || previous.status === 'DELETED'
           || previous.ownerId && previous.ownerId !== input.ownerId || previous.repositoryUrl && previous.repositoryUrl !== input.repositoryUrl))
         throw new Error('Stale workspace operation');
+      let activeCount = 0;
       for (const other of await this.all()) {
+        if (other.id !== input.id && (await this.docker.inspect(this.name(other.id)))?.State.Running) activeCount++;
         if (other.id !== input.id && other.ownerId === input.ownerId && (await this.docker.inspect(this.name(other.id)))?.State.Running)
           throw new Error('Another workspace is running');
       }
+      if (activeCount >= this.maxRunning) throw new Error('Runner active workspace limit reached');
       const disk = await fs.statfs(this.data);
       if (Number(disk.bavail) * Number(disk.bsize) < this.minFree) throw new Error('Runner free space below reserve');
       const meta = {...previous, ...input, initialized: previous?.initialized || false,
@@ -218,7 +223,7 @@ export class Manager {
       if (result.code !== 0) { await this.stopRuntime(meta); throw new Error('Repository provisioning failed'); }
       meta.initialized = true; meta.status = 'RUNNING'; await this.write(meta);
       return this.inspect(meta.id);
-    });
+    }));
   }
   async stopRuntime(meta) {
     for (const [key, connection] of this.connections) if (key.startsWith(meta.id + ':')) { connection.close(); this.connections.delete(key); }
@@ -398,7 +403,10 @@ export class Manager {
         let active = [...this.connections.keys()].some(k => k.startsWith(meta.id + ':'));
         // A tmux pane normally has tmux + one shell/CLI process; descendants indicate ongoing work.
         const processes = await this.docker.exec(container.Id, ['ps', '-eo', 'comm='], {workingDir: '/workspace'});
-        if (processes.code === 0) active ||= processes.output.split('\n').some(p => /^(node|claude|codex|java|git|npm|python)/.test(p.trim()));
+        if (processes.code === 0) {
+          const names = processes.output.split('\n').map(p => p.trim()).filter(Boolean);
+          active ||= names.some(p => !/^(sleep|tini|docker-init|bash|sh|ps|tmux.*)$/.test(p)) || names.filter(p => p === 'sleep').length > 1;
+        }
         if (this.activity.has(meta.id)) current.lastActivityAt = this.activity.get(meta.id);
         if (active) current.lastActivityAt = new Date().toISOString();
         const now = Date.now();
