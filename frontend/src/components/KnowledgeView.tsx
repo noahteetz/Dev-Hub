@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import type { ContentEntry, ContentType, Project } from '../types'
+import { projectCan } from '../utils/projectPermissions'
 import { formatDate } from '../utils/formatDate'
 import { MarkdownView } from './MarkdownView'
 
@@ -91,7 +92,7 @@ export function KnowledgeView({ mode, projects, version, onCapture, onEdit, onCh
   }), [entries, period, projectFilter, query, referenceTime, showInactive, tagFilter, typeFilter])
 
   const tags = useMemo(() => Array.from(new Set(entries.flatMap((entry) => entry.tags.map((tag) => tag.name)))).sort(), [entries])
-  const orderedProjects = useMemo(() => [...projects].sort((left, right) => {
+  const orderedProjects = useMemo(() => projects.filter((project) => projectCan(project, 'writeContent')).sort((left, right) => {
     const leftIndex = recentProjectIds.indexOf(left.id); const rightIndex = recentProjectIds.indexOf(right.id)
     return (leftIndex < 0 ? 999 : leftIndex) - (rightIndex < 0 ? 999 : rightIndex)
   }), [projects, recentProjectIds])
@@ -99,8 +100,8 @@ export function KnowledgeView({ mode, projects, version, onCapture, onEdit, onCh
   const key = (entry: ContentEntry) => `${entry.type}-${entry.id}`
 
   async function mutate(action: () => Promise<unknown>, projectChanged = false) {
-    try { await action(); setSelected(new Set()); await load(); onChanged(); if (projectChanged) onProjectsChanged() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'The action failed.') }
+    try { await action(); setSelected(new Set()); await load(); onChanged(); if (projectChanged) onProjectsChanged(); return true }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'The action failed.'); return false }
   }
 
   async function bulkAssign(projectId: string) {
@@ -109,9 +110,18 @@ export function KnowledgeView({ mode, projects, version, onCapture, onEdit, onCh
   }
 
   async function assignOne(entry: ContentEntry, projectId: number) {
-    await mutate(() => api.content.assign(entry, projectId))
+    if (!await mutate(() => api.content.assign(entry, projectId))) return
     const recent = [projectId, ...recentProjectIds.filter((id) => id !== projectId)].slice(0, 5)
-    setRecentProjectIds(recent); localStorage.setItem('devhub.recentProjects', JSON.stringify(recent)); setLastAssigned(entry)
+    setRecentProjectIds(recent); localStorage.setItem('devhub.recentProjects', JSON.stringify(recent)); setLastAssigned({ ...entry, projectId })
+  }
+
+  const lastAssignedProject = projects.find((project) => project.id === lastAssigned?.projectId)
+  const canUndoAssignment = lastAssignedProject !== undefined && projectCan(lastAssignedProject, 'detachContent')
+
+  async function undoAssignment() {
+    if (lastAssigned && canUndoAssignment && await mutate(() => api.content.assign(lastAssigned, null))) {
+      setLastAssigned(null)
+    }
   }
 
   const title = mode === 'inbox' ? 'Inbox' : mode === 'notes' ? 'All notes' : 'All ideas'
@@ -145,13 +155,15 @@ export function KnowledgeView({ mode, projects, version, onCapture, onEdit, onCh
         </Stack>
         {selected.size ? <Card variant="outlined" sx={{ mb: 2 }}><CardContent><Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}><Typography>{selected.size} selected</Typography><Autocomplete getOptionLabel={(project) => project.name} options={orderedProjects} sx={{ minWidth: 260 }} onChange={(_, project) => { if (project) void bulkAssign(String(project.id)) }} renderInput={(params) => <TextField {...params} label="Assign selected to…" size="small" />} /></Stack></CardContent></Card> : null}
         {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
-        {lastAssigned ? <Alert action={<Button color="inherit" onClick={() => void mutate(() => api.content.assign(lastAssigned, null)).then(() => setLastAssigned(null))}>Undo</Button>} severity="success" sx={{ mb: 2 }}>{lastAssigned.title} was assigned to a project.</Alert> : null}
+        {lastAssigned ? <Alert action={canUndoAssignment ? <Button color="inherit" onClick={() => void undoAssignment()}>Undo</Button> : undefined} severity="success" sx={{ mb: 2 }}>{lastAssigned.title} was assigned to a project.{canUndoAssignment ? '' : ' Only the project owner can move it back to an inbox.'}</Alert> : null}
         {loading ? <Stack sx={{ alignItems: 'center', py: 8 }}><CircularProgress /></Stack> : null}
         {!loading && !visible.length ? <Card variant="outlined"><CardContent sx={{ py: 7, textAlign: 'center' }}><FolderOpenOutlinedIcon sx={{ color: 'primary.main', fontSize: 44 }} /><Typography variant="h6" sx={{ mt: 1 }}>{mode === 'inbox' ? 'Your inbox is clear' : 'No entries match'}</Typography><Typography color="text.secondary" sx={{ mb: 2 }}>{mode === 'inbox' ? 'Capture a thought now; you can file it into a project later.' : 'Adjust the filters or capture a new entry.'}</Typography><Button variant="contained" onClick={onCapture}>Quick capture</Button></CardContent></Card> : null}
         <Stack spacing={1.5}>{visible.map((entry) => {
           const project = projects.find((candidate) => candidate.id === entry.projectId)
-          return <Card key={key(entry)} variant="outlined"><CardContent><Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}><Checkbox checked={selected.has(key(entry))} onChange={(event) => setSelected((current) => { const next = new Set(current); if (event.target.checked) next.add(key(entry)); else next.delete(key(entry)); return next })} /><Box sx={{ flex: 1, minWidth: 0 }}><Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}><Chip label={typeLabels[entry.type]} size="small" /><Typography component="button" variant="h6" sx={{ background: 'none', border: 0, cursor: 'pointer', font: 'inherit', fontWeight: 700, p: 0, textAlign: 'left' }} onClick={() => onEdit(entry)}>{entry.title}</Typography>{entry.archived ? <Chip label="Archived" size="small" /> : null}{entry.completed ? <Chip color="success" label="Completed" size="small" /> : null}{entry.converted ? <Chip color="success" label="Converted" size="small" /> : null}{entry.projectArchived ? <Chip color="warning" label="Archived project" size="small" /> : null}</Stack>{entry.type === 'NOTE' || entry.type === 'IDEA' ? <MarkdownView content={entry.content || 'No additional content'} sx={{ color: 'text.secondary', maxHeight: 240, mt: 1, overflow: 'hidden' }} /> : <Typography color="text.secondary" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{entry.content || 'No additional content'}</Typography>}<Stack direction="row" spacing={1} sx={{ mt: 1.5, alignItems: 'center', flexWrap: 'wrap' }}><Chip label={project?.name ?? 'Inbox'} size="small" variant="outlined" />{entry.tags.map((tag) => <Chip key={tag.id} label={tag.name} size="small" />)}<Typography color="text.disabled" variant="caption">Updated {formatDate(entry.updatedAt)}</Typography></Stack></Box><Stack direction="row"><IconButton aria-label={`Edit ${entry.title}`} onClick={() => onEdit(entry)}><EditOutlinedIcon /></IconButton>{entry.type !== 'TODO' ? <IconButton aria-label={`${entry.archived ? 'Restore' : 'Archive'} ${entry.title}`} onClick={() => void mutate(() => api.content.archive(entry, !entry.archived))}><ArchiveOutlinedIcon /></IconButton> : <Checkbox aria-label={`Complete ${entry.title}`} checked={entry.completed} onChange={() => void mutate(() => api.content.complete(entry, !entry.completed))} />}<IconButton aria-label={`Copy permanent link to ${entry.title}`} onClick={() => void copyPermanentLink(entry)}><ContentCopyRoundedIcon /></IconButton><IconButton aria-label={`Delete ${entry.title}`} onClick={() => void mutate(() => api.content.remove(entry))}><DeleteOutlineRoundedIcon /></IconButton></Stack></Stack>
-          {mode === 'inbox' ? <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2, pl: 6 }}><Autocomplete getOptionLabel={(candidate) => candidate.name} options={orderedProjects} sx={{ minWidth: 260 }} onChange={(_, candidate) => { if (candidate) void assignOne(entry, candidate.id) }} renderInput={(params) => <TextField {...params} label="Assign to project…" size="small" />} /><Button onClick={() => void mutate(() => api.content.promote(entry), true)}>Turn into project</Button></Stack> : entry.projectId !== null ? <Button size="small" sx={{ ml: 6, mt: 1 }} onClick={() => void mutate(() => api.content.assign(entry, null))}>Move to inbox</Button> : null}
+          const canChange = entry.projectId === null || (project !== undefined && projectCan(project, 'writeContent'))
+          const canDetach = project !== undefined && projectCan(project, 'detachContent')
+          return <Card key={key(entry)} variant="outlined"><CardContent><Stack direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}><Checkbox checked={selected.has(key(entry))} onChange={(event) => setSelected((current) => { const next = new Set(current); if (event.target.checked) next.add(key(entry)); else next.delete(key(entry)); return next })} /><Box sx={{ flex: 1, minWidth: 0 }}><Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}><Chip label={typeLabels[entry.type]} size="small" /><Typography component="button" variant="h6" sx={{ background: 'none', border: 0, cursor: 'pointer', font: 'inherit', fontWeight: 700, p: 0, textAlign: 'left' }} onClick={() => onEdit(entry)}>{entry.title}</Typography>{entry.archived ? <Chip label="Archived" size="small" /> : null}{entry.completed ? <Chip color="success" label="Completed" size="small" /> : null}{entry.converted ? <Chip color="success" label="Converted" size="small" /> : null}{entry.projectArchived ? <Chip color="warning" label="Archived project" size="small" /> : null}</Stack>{entry.type === 'NOTE' || entry.type === 'IDEA' ? <MarkdownView content={entry.content || 'No additional content'} sx={{ color: 'text.secondary', maxHeight: 240, mt: 1, overflow: 'hidden' }} /> : <Typography color="text.secondary" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{entry.content || 'No additional content'}</Typography>}<Stack direction="row" spacing={1} sx={{ mt: 1.5, alignItems: 'center', flexWrap: 'wrap' }}><Chip label={project?.name ?? 'Inbox'} size="small" variant="outlined" />{entry.tags.map((tag) => <Chip key={tag.id} label={tag.name} size="small" />)}<Typography color="text.disabled" variant="caption">Updated {formatDate(entry.updatedAt)}</Typography>{project?.shared && entry.createdBy ? <Typography color="text.disabled" variant="caption">Created by {entry.createdBy}</Typography> : null}</Stack></Box><Stack direction="row"><IconButton aria-label={`Edit ${entry.title}`} onClick={() => onEdit(entry)}><EditOutlinedIcon /></IconButton>{!canChange ? null : entry.type !== 'TODO' ? <IconButton aria-label={`${entry.archived ? 'Restore' : 'Archive'} ${entry.title}`} onClick={() => void mutate(() => api.content.archive(entry, !entry.archived))}><ArchiveOutlinedIcon /></IconButton> : <Checkbox aria-label={`Complete ${entry.title}`} checked={entry.completed} onChange={() => void mutate(() => api.content.complete(entry, !entry.completed))} />}<IconButton aria-label={`Copy permanent link to ${entry.title}`} onClick={() => void copyPermanentLink(entry)}><ContentCopyRoundedIcon /></IconButton>{canChange ? <IconButton aria-label={`Delete ${entry.title}`} onClick={() => void mutate(() => api.content.remove(entry))}><DeleteOutlineRoundedIcon /></IconButton> : null}</Stack></Stack>
+          {mode === 'inbox' ? <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2, pl: 6 }}><Autocomplete getOptionLabel={(candidate) => candidate.name} options={orderedProjects} sx={{ minWidth: 260 }} onChange={(_, candidate) => { if (candidate) void assignOne(entry, candidate.id) }} renderInput={(params) => <TextField {...params} label="Assign to project…" size="small" />} /><Button onClick={() => void mutate(() => api.content.promote(entry), true)}>Turn into project</Button></Stack> : entry.projectId !== null && canDetach ? <Button size="small" sx={{ ml: 6, mt: 1 }} onClick={() => void mutate(() => api.content.assign(entry, null))}>Move to inbox</Button> : null}
           </CardContent></Card>
         })}</Stack>
       </Box>

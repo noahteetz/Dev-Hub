@@ -3,8 +3,9 @@ package com.devhub.backend.service;
 import com.devhub.backend.dto.NoteRequest;
 import com.devhub.backend.exception.ResourceNotFoundException;
 import com.devhub.backend.model.Note;
+import com.devhub.backend.model.Permission;
+import com.devhub.backend.model.ProjectAccess;
 import com.devhub.backend.repository.NoteRepository;
-import com.devhub.backend.repository.ProjectRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -12,35 +13,36 @@ import org.springframework.stereotype.Service;
 public class NoteService {
 
 	private final NoteRepository noteRepository;
-	private final ProjectRepository projectRepository;
+	private final ProjectAccessService access;
 
-	public NoteService(NoteRepository noteRepository, ProjectRepository projectRepository) {
+	public NoteService(NoteRepository noteRepository, ProjectAccessService access) {
 		this.noteRepository = noteRepository;
-		this.projectRepository = projectRepository;
+		this.access = access;
 	}
 
 	public Note create(long projectId, NoteRequest request) {
-		long project = requireProject(projectId);
+		ProjectAccess project = access.require(projectId, Permission.WRITE_CONTENT);
 		NoteRequest body = RequestValidation.requireRequest(request);
 		return noteRepository.create(
-				project,
+				project.ownerId(),
+				project.projectId(),
 				RequestValidation.required(body.title(), "Note title"),
 				RequestValidation.requiredContent(body.content(), "Note content")
 		);
 	}
 
 	public List<Note> findAll(long projectId) {
-		return noteRepository.findAllByProjectId(requireProject(projectId));
+		return noteRepository.findAllByProjectId(access.require(projectId, Permission.READ).projectId());
 	}
 
 	public Note findById(long projectId, long noteId) {
-		long project = requireProject(projectId);
+		long project = access.require(projectId, Permission.READ).projectId();
 		long note = RequestValidation.requireId(noteId, "Note");
 		return getExisting(project, note);
 	}
 
 	public Note update(long projectId, long noteId, NoteRequest request) {
-		long project = requireProject(projectId);
+		long project = access.require(projectId, Permission.WRITE_CONTENT).projectId();
 		long note = RequestValidation.requireId(noteId, "Note");
 		NoteRequest body = RequestValidation.requireRequest(request);
 		if (noteRepository.update(
@@ -55,19 +57,11 @@ public class NoteService {
 	}
 
 	public void delete(long projectId, long noteId) {
-		long project = requireProject(projectId);
+		long project = access.require(projectId, Permission.WRITE_CONTENT).projectId();
 		long note = RequestValidation.requireId(noteId, "Note");
 		if (noteRepository.delete(project, note) == 0) {
 			throw notFound(note);
 		}
-	}
-
-	private long requireProject(long projectId) {
-		long id = RequestValidation.requireId(projectId, "Project");
-		if (projectRepository.findById(id).isEmpty()) {
-			throw new ResourceNotFoundException("Project " + id + " was not found");
-		}
-		return id;
 	}
 
 	private Note getExisting(long projectId, long noteId) {

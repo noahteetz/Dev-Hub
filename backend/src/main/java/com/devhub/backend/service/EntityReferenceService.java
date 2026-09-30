@@ -1,11 +1,15 @@
 package com.devhub.backend.service;
 
 import com.devhub.backend.dto.EntityReferenceRequest;
+import com.devhub.backend.exception.ForbiddenException;
 import com.devhub.backend.exception.InvalidRequestException;
 import com.devhub.backend.exception.ResourceNotFoundException;
 import com.devhub.backend.model.EntityReference;
 import com.devhub.backend.model.EntityType;
+import com.devhub.backend.model.Permission;
 import com.devhub.backend.repository.EntityReferenceRepository;
+import com.devhub.backend.repository.GlobalContentRepository.Placement;
+import com.devhub.backend.security.CurrentUser;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -16,9 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class EntityReferenceService {
 
 	private final EntityReferenceRepository references;
+	private final ProjectAccessService access;
+	private final CurrentUser currentUser;
 
-	public EntityReferenceService(EntityReferenceRepository references) {
+	public EntityReferenceService(EntityReferenceRepository references, ProjectAccessService access, CurrentUser currentUser) {
 		this.references = references;
+		this.access = access;
+		this.currentUser = currentUser;
 	}
 
 	@Transactional
@@ -31,6 +39,9 @@ public class EntityReferenceService {
 			throw new InvalidRequestException("An entry cannot reference itself");
 		}
 		requireTitle(request.sourceType(), request.sourceId());
+		if (!canWrite(request.sourceType(), request.sourceId())) {
+			throw new ForbiddenException("Your role in this project does not allow this action");
+		}
 		requireTitle(request.targetType(), request.targetId());
 
 		EntityReference reference = references
@@ -55,9 +66,15 @@ public class EntityReferenceService {
 
 	@Transactional
 	public void delete(long id) {
-		if (references.delete(id) == 0) {
+		EntityReference reference = references.find(id)
+				.orElseThrow(() -> new ResourceNotFoundException("Reference " + id + " was not found"));
+		// Authorship does not grant access after a membership was removed or downgraded.
+		boolean allowed = references.title(reference.sourceType(), reference.sourceId()).isPresent()
+				&& canWrite(reference.sourceType(), reference.sourceId());
+		if (!allowed) {
 			throw new ResourceNotFoundException("Reference " + id + " was not found");
 		}
+		references.delete(id);
 	}
 
 	private List<EntityReference> resolveAll(List<EntityReference> raw) {
@@ -65,19 +82,40 @@ public class EntityReferenceService {
 	}
 
 	/**
-	 * Fills in both titles. A reference whose source or target was deleted is removed here, so a
-	 * deleted entry silently drops the link instead of leaving a broken row behind.
+	 * Fills in both titles. A reference to an entry the caller may not see is left out for them.
+	 * One whose source or target was deleted is removed here, so a deleted entry silently drops
+	 * the link instead of leaving a broken row behind.
 	 */
 	private Optional<EntityReference> resolve(EntityReference reference) {
 		Optional<String> sourceTitle = references.title(reference.sourceType(), reference.sourceId());
 		Optional<String> targetTitle = references.title(reference.targetType(), reference.targetId());
 		if (sourceTitle.isEmpty() || targetTitle.isEmpty()) {
-			references.delete(reference.id());
+			if (!references.exists(reference.sourceType(), reference.sourceId())
+					|| !references.exists(reference.targetType(), reference.targetId())) {
+				references.delete(reference.id());
+			}
 			return Optional.empty();
 		}
 		return Optional.of(new EntityReference(reference.id(), reference.sourceType(), reference.sourceId(), sourceTitle.get(),
 				reference.targetType(), reference.targetId(), targetTitle.get(), reference.targetUrl(), reference.sourceUrl(),
 				reference.createdAt()));
+	}
+
+	/** The caller's own inbox entries, and anything in a project where they may change content. */
+	private boolean canWrite(EntityType type, long id) {
+		Optional<Placement> placement = references.placement(type, id);
+		if (placement.isEmpty()) {
+			return false;
+		}
+		if (placement.get().projectId() == null) {
+			return placement.get().ownerId() == currentUser.id();
+		}
+		try {
+			access.require(placement.get().projectId(), Permission.WRITE_CONTENT);
+			return true;
+		} catch (ResourceNotFoundException | ForbiddenException exception) {
+			return false;
+		}
 	}
 
 	private void requireTitle(EntityType type, long id) {

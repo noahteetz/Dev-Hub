@@ -18,6 +18,7 @@ public record ContentEntry(
 		List<Tag> tags,
 		Instant filedAt,
 		Instant createdAt,
-		Instant updatedAt
+		Instant updatedAt,
+		String createdBy
 ) {
 }

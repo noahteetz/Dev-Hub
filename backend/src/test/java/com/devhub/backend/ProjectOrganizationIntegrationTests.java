@@ -52,8 +52,9 @@ class ProjectOrganizationIntegrationTests {
 
 		Project organized = projectService.updateOrganization(
 				created.id(),
-				new ProjectOrganizationRequest(ProjectStatus.ACTIVE, 3, true)
+				new ProjectOrganizationRequest(ProjectStatus.ACTIVE, 3)
 		);
+		Project favorite = projectService.setFavorite(created.id(), true);
 		Project withContext = projectService.updateContext(
 				created.id(),
 				new ProjectContextRequest(
@@ -68,7 +69,7 @@ class ProjectOrganizationIntegrationTests {
 
 		assertThat(organized.status()).isEqualTo(ProjectStatus.ACTIVE);
 		assertThat(organized.priority()).isEqualTo(3);
-		assertThat(organized.favorite()).isTrue();
+		assertThat(favorite.favorite()).isTrue();
 		assertThat(withContext.nextStep()).isEqualTo("Add the first integration test.");
 		assertThat(withContext.contextUpdatedAt()).isNotNull();
 

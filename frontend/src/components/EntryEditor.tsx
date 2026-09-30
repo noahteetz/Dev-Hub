@@ -38,6 +38,7 @@ import { EntryReferences } from './EntryReferences'
 import { MarkdownView } from './MarkdownView'
 import { SnippetPickerDialog, type SnippetInsertMode } from './SnippetPickerDialog'
 import type { ContentEntry, ContentType, Project } from '../types'
+import { projectCan } from '../utils/projectPermissions'
 
 const AUTOSAVE_DELAY_MS = 1200
 
@@ -126,12 +127,14 @@ export function EntryEditor({ type, entryId, projects, onChanged }: EntryEditorP
   const [notice, setNotice] = useState('')
 
   const dirty = title !== saved.title || content !== saved.content
-  const showEditor = narrow ? narrowPane === 'editor' : !previewOnly
-  const showPreview = narrow ? narrowPane === 'preview' : true
   const project = useMemo(
     () => projects.find((candidate) => candidate.id === entry?.projectId) ?? null,
     [entry?.projectId, projects],
   )
+  // A viewer of a shared project reads the entry; the server refuses changes anyway.
+  const readOnly = project !== null && !projectCan(project, 'writeContent')
+  const showEditor = !readOnly && (narrow ? narrowPane === 'editor' : !previewOnly)
+  const showPreview = readOnly || (narrow ? narrowPane === 'preview' : true)
   const preview = useMemo(
     () => (type === 'SNIPPET' ? `\`\`\`${entry?.language || 'text'}\n${content}\n\`\`\`` : content),
     [content, entry?.language, type],
@@ -396,17 +399,20 @@ export function EntryEditor({ type, entryId, projects, onChanged }: EntryEditorP
             <ArrowBackRoundedIcon />
           </IconButton>
           <Chip label={project ? project.name : 'Inbox'} size="small" variant="outlined" />
+          {readOnly ? <Chip label="Read only" size="small" /> : null}
+          {readOnly ? null : (
           <Chip
             color={status === 'error' ? 'error' : dirty ? 'warning' : 'success'}
             label={statusLabel}
             size="small"
             variant={status === 'saving' ? 'outlined' : 'filled'}
           />
+          )}
           <Box sx={{ flex: 1 }} />
           <Button size="small" startIcon={<ContentCopyRoundedIcon />} onClick={() => void copyPermanentLink()}>
             Copy permanent link
           </Button>
-          {narrow ? (
+          {readOnly ? null : narrow ? (
             <ToggleButtonGroup exclusive size="small" value={narrowPane} onChange={(_event, value) => value && setNarrowPane(value)}>
               <ToggleButton value="editor">Editor</ToggleButton>
               <ToggleButton value="preview">Preview</ToggleButton>
@@ -416,9 +422,11 @@ export function EntryEditor({ type, entryId, projects, onChanged }: EntryEditorP
               {previewOnly ? 'Show editor' : 'Preview only'}
             </Button>
           )}
+          {readOnly ? null : (
           <Button disabled={!dirty || status === 'saving'} size="small" variant="contained" onClick={() => void save()}>
             Save now
           </Button>
+          )}
         </Stack>
       </Box>
 
@@ -472,6 +480,7 @@ export function EntryEditor({ type, entryId, projects, onChanged }: EntryEditorP
         ) : null}
 
         <TextField
+          disabled={readOnly}
           fullWidth
           label="Title"
           sx={{ mb: 2 }}
@@ -522,7 +531,7 @@ export function EntryEditor({ type, entryId, projects, onChanged }: EntryEditorP
 
         <Card sx={{ mt: 3 }} variant="outlined">
           <CardContent>
-            <EntryReferences id={entryId} type={entry.type} />
+            <EntryReferences id={entryId} readOnly={readOnly} type={entry.type} />
           </CardContent>
         </Card>
       </Box>

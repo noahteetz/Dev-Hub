@@ -25,6 +25,9 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     updatedAt: '2026-09-02T08:00:00Z',
     effectiveActivityAt: '2026-09-02T08:00:00Z',
     stale: false,
+    role: 'OWNER',
+    ownerName: 'Test owner',
+    shared: false,
     ...overrides,
   }
 }

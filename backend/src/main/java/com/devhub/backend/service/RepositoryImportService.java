@@ -4,6 +4,7 @@ import com.devhub.backend.dto.ProjectRequest;
 import com.devhub.backend.dto.RepositoryImportRequest;
 import com.devhub.backend.exception.InvalidRequestException;
 import com.devhub.backend.model.Project;
+import com.devhub.backend.model.ProjectRole;
 import com.devhub.backend.model.RemoteRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -87,9 +88,10 @@ public class RepositoryImportService {
 		return new ImportResult(List.copyOf(created), List.copyOf(skipped));
 	}
 
-	/** Canonical URLs of every project that already points at a repository, archived included. */
+	/** Canonical URLs of every project the user owns that already points at a repository, archived included. */
 	private Set<String> connectedRepositoryUrls() {
 		return Stream.concat(projectService.findAll(false).stream(), projectService.findAll(true).stream())
+				.filter(project -> project.role() == ProjectRole.OWNER)
 				.map(Project::repositoryUrl)
 				.filter(url -> url != null && !url.isBlank())
 				.map(this::canonical)

@@ -57,9 +57,14 @@ public class JdbcSearchRepository implements SearchRepository {
 				.append("s.created_at AS created_at, s.updated_at AS updated_at FROM ")
 				.append(source.table()).append(" s ")
 				.append(source.projectJoin())
-				.append(" WHERE s.owner_id = ? AND (LOWER(").append(source.titleColumn()).append(") LIKE ? OR LOWER(")
+				.append(" WHERE ").append(visibility(type)).append(" AND (LOWER(").append(source.titleColumn()).append(") LIKE ? OR LOWER(")
 				.append(source.contentExpression()).append(") LIKE ?)");
-		args.add(currentUser.id());
+		long me = currentUser.id();
+		args.add(me);
+		args.add(me);
+		if (type != EntityType.PROJECT) {
+			args.add(me);
+		}
 		args.add(pattern);
 		args.add(pattern);
 
@@ -87,6 +92,14 @@ public class JdbcSearchRepository implements SearchRepository {
 
 		List<SearchResult> hits = jdbc.query(sql.toString(), (rs, row) -> map(type, criteria.term(), rs), args.toArray());
 		return withTags(source, hits);
+	}
+
+	/** Projects the user owns or is a member of, their own inbox entries, and entries in those projects. */
+	private static String visibility(EntityType type) {
+		if (type == EntityType.PROJECT) {
+			return "(s.owner_id = ? OR EXISTS (SELECT 1 FROM project_members vm WHERE vm.project_id = s.id AND vm.user_id = ?))";
+		}
+		return "((s.project_id IS NULL AND s.owner_id = ?) OR (p.id IS NOT NULL AND (p.owner_id = ? OR EXISTS (SELECT 1 FROM project_members vm WHERE vm.project_id = p.id AND vm.user_id = ?))))";
 	}
 
 	private SearchResult map(EntityType type, String term, ResultSet rs) throws SQLException {

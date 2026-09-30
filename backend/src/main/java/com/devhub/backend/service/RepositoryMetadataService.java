@@ -3,6 +3,7 @@ package com.devhub.backend.service;
 import com.devhub.backend.exception.InvalidRequestException;
 import com.devhub.backend.exception.ResourceNotFoundException;
 import com.devhub.backend.model.Project;
+import com.devhub.backend.model.Permission;
 import com.devhub.backend.model.RepositoryConnection;
 import com.devhub.backend.model.RepositoryCredential;
 import com.devhub.backend.model.RepositoryFetch;
@@ -24,6 +25,7 @@ import org.springframework.web.client.RestClientResponseException;
 public class RepositoryMetadataService {
 
 	private final ProjectRepository projectRepository;
+	private final ProjectAccessService access;
 	private final RepositoryMetadataRepository metadataRepository;
 	private final RepositoryUrlParser urlParser;
 	private final GitCredentialService credentialService;
@@ -33,12 +35,14 @@ public class RepositoryMetadataService {
 
 	public RepositoryMetadataService(
 			ProjectRepository projectRepository,
+			ProjectAccessService access,
 			RepositoryMetadataRepository metadataRepository,
 			RepositoryUrlParser urlParser,
 			GitCredentialService credentialService,
 			List<RepositoryMetadataProvider> providers
 	) {
 		this.projectRepository = projectRepository;
+		this.access = access;
 		this.metadataRepository = metadataRepository;
 		this.urlParser = urlParser;
 		this.credentialService = credentialService;
@@ -46,12 +50,13 @@ public class RepositoryMetadataService {
 	}
 
 	public RepositoryConnection find(long projectId) {
-		Project project = getProject(projectId);
+		Project project = getProject(projectId, Permission.READ);
 		return connection(project);
 	}
 
+	/** Only the owner refreshes, so the owner's own token is the only one ever used. */
 	public RepositoryConnection refresh(long projectId) {
-		Project project = getProject(projectId);
+		Project project = getProject(projectId, Permission.MANAGE_REPOSITORY);
 		if (project.repositoryUrl() == null || project.repositoryUrl().isBlank()) {
 			throw new InvalidRequestException("Project has no repository URL");
 		}
@@ -149,8 +154,8 @@ public class RepositoryMetadataService {
 		);
 	}
 
-	private Project getProject(long projectId) {
-		long id = RequestValidation.requireId(projectId, "Project");
+	private Project getProject(long projectId, Permission permission) {
+		long id = access.require(projectId, permission).projectId();
 		return projectRepository.findById(id)
 				.orElseThrow(() -> new ResourceNotFoundException("Project " + id + " was not found"));
 	}

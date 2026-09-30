@@ -28,6 +28,7 @@ import { Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { accentText, tint, tintShadow } from '../theme'
 import type { Project } from '../types'
+import { projectCan, roleLabel } from '../utils/projectPermissions'
 import { ColorModeToggle } from './ColorModeToggle'
 
 export type ApiState = 'loading' | 'ready' | 'error'
@@ -64,7 +65,12 @@ export function ProjectSidebar({
   onRetry,
 }: ProjectSidebarProps) {
   const navigate = useNavigate()
-  const visibleProjects = projects
+  // Own projects first, the ones shared with the user below their own heading.
+  const visibleProjects = [
+    ...projects.filter((project) => project.role === 'OWNER'),
+    ...projects.filter((project) => project.role !== 'OWNER'),
+  ]
+  const firstSharedId = visibleProjects.find((project) => project.role !== 'OWNER')?.id ?? null
 
   return (
     <Paper
@@ -201,9 +207,15 @@ export function ProjectSidebar({
 
         {visibleProjects.map((project) => (
           <Fragment key={project.id}>
+            {project.id === firstSharedId ? (
+              <Typography color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 0.8, px: 1.25, pb: 0.5, pt: 1.5, textTransform: 'uppercase' }} variant="caption">
+                Shared with me
+              </Typography>
+            ) : null}
             <ListItem
             disablePadding
             secondaryAction={
+              projectCan(project, 'editMetadata') ? (
               <Stack
                 className="project-actions"
                 direction="row"
@@ -244,6 +256,7 @@ export function ProjectSidebar({
                   </IconButton>
                 </Tooltip>
               </Stack>
+              ) : undefined
             }
             sx={{
               mb: 0.5,
@@ -257,7 +270,7 @@ export function ProjectSidebar({
               selected={project.id === selectedProjectId}
               sx={(theme) => ({
                 borderRadius: 1,
-                pr: 11,
+                pr: projectCan(project, 'editMetadata') ? 11 : 1.5,
                 transition: 'background-color 160ms ease, transform 160ms ease',
                 '&:hover': {
                   bgcolor: tint(theme, 0.05),
@@ -287,7 +300,7 @@ export function ProjectSidebar({
               </Avatar>
               <ListItemText
                 primary={project.name}
-                secondary={project.description || 'No description'}
+                secondary={project.role === 'OWNER' ? project.description || 'No description' : `Shared by ${project.ownerName} - ${roleLabel(project.role)}`}
                 slotProps={{
                   primary: {
                     noWrap: true,

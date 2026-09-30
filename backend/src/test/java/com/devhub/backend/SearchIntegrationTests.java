@@ -98,7 +98,7 @@ class SearchIntegrationTests {
 	}
 
 	@Test void answersQuicklyOnAFewThousandEntries() {
-		jdbc.batchUpdate("INSERT INTO notes (project_id, title, content, owner_id) VALUES (NULL, ?, ?, (SELECT id FROM app_users WHERE oidc_subject = 'local'))",
+		jdbc.batchUpdate("INSERT INTO notes (project_id, title, content, owner_id, created_by) VALUES (NULL, ?, ?, (SELECT id FROM app_users WHERE oidc_subject = 'local'), (SELECT id FROM app_users WHERE oidc_subject = 'local'))",
 				java.util.stream.IntStream.range(0, 4000)
 						.mapToObj(index -> new Object[]{"Note " + index, "Filler body " + index})
 						.toList());

@@ -9,6 +9,7 @@ public record CodeSnippet(
 		String language,
 		String code,
 		Instant createdAt,
-		Instant updatedAt
+		Instant updatedAt,
+		String createdBy
 ) {
 }
