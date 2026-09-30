@@ -157,7 +157,8 @@ public class ProjectService {
 	@Transactional
 	public void delete(long projectId) {
 		long id = access.require(projectId, Permission.DELETE).projectId();
-		if (workspaces.projectHasWorkspaces(id)) {
+		workspaces.lockProject(id);
+        if (workspaces.projectHasWorkspaces(id)) {
             throw new com.devhub.backend.exception.ConflictException("Stop and delete this project's workspaces before deleting the project");
         }
         workspaces.purgeDeleted(id);

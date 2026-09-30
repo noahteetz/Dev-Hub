@@ -25,6 +25,9 @@ public class TerminalBridge extends TextWebSocketHandler {
         final WebSocketSession browser;
         final AtomicReference<TerminalTickets.Grant> grant;
         volatile WebSocket runner;
+        final java.util.concurrent.CompletableFuture<WebSocket> ready = new java.util.concurrent.CompletableFuture<>();
+        java.util.concurrent.CompletableFuture<WebSocket> outgoing = ready;
+        int pendingBytes;
         Connection(WebSocketSession browser, TerminalTickets.Grant grant) {
             this.browser = new ConcurrentWebSocketSessionDecorator(browser, 5000, 512 * 1024);
             this.grant = new AtomicReference<>(grant);
@@ -47,6 +50,7 @@ public class TerminalBridge extends TextWebSocketHandler {
                 .buildAsync(runner.terminalUri(grant.workspaceId(), grant.terminalId()), new WebSocket.Listener() {
                     @Override public void onOpen(WebSocket socket) {
                         c.runner = socket;
+                        c.ready.complete(socket);
                         if (!c.browser.isOpen()) { socket.abort(); return; }
                         socket.request(1);
                     }
@@ -62,7 +66,7 @@ public class TerminalBridge extends TextWebSocketHandler {
                     }
                     @Override public CompletionStage<?> onClose(WebSocket socket, int code, String reason) { close(c, CloseStatus.NORMAL); return null; }
                     @Override public void onError(WebSocket socket, Throwable error) { close(c, CloseStatus.SERVER_ERROR); }
-                }).exceptionally(e -> { close(c, CloseStatus.SERVER_ERROR); return null; });
+                }).exceptionally(e -> { c.ready.completeExceptionally(e); close(c, CloseStatus.SERVER_ERROR); return null; });
     }
     @Override protected void handleTextMessage(WebSocketSession browser, TextMessage message) {
         var c = connections.get(browser.getId()); if (c == null) return;
@@ -76,8 +80,16 @@ public class TerminalBridge extends TextWebSocketHandler {
                 c.grant.set(next); return;
             }
             tickets.check(c.grant.get());
-            if (c.runner == null || c.runner.isOutputClosed()) throw new IllegalStateException();
-            if (c.runner.sendText(message.getPayload(), true).isCompletedExceptionally()) throw new IllegalStateException();
+            String payload = message.getPayload();
+            int bytes = payload.length() * 2;
+            synchronized (c) {
+                c.pendingBytes += bytes;
+                if (c.pendingBytes > 65536) throw new IllegalStateException("Terminal input buffer full");
+                c.outgoing = c.outgoing.thenCompose(socket -> socket.sendText(payload, true)).whenComplete((socket, error) -> {
+                    synchronized (c) { c.pendingBytes -= bytes; }
+                    if (error != null) close(c, CloseStatus.SERVER_ERROR);
+                });
+            }
         } catch (Exception e) { close(c, CloseStatus.POLICY_VIOLATION); }
     }
     @Scheduled(fixedDelay = 1000)

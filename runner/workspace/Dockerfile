@@ -7,7 +7,9 @@ ARG CLAUDE_VERSION=2.1.285
 ARG CODEX_VERSION=0.159.2
 RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
-RUN useradd --uid 1000 --create-home --shell /bin/bash workspace
+RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
+    && if [ -n "$existing_user" ]; then usermod --login workspace --home /home/workspace --move-home --shell /bin/bash "$existing_user"; \
+       else useradd --uid 1000 --create-home --shell /bin/bash workspace; fi
 COPY bootstrap.sh profile-init.sh /usr/local/bin/
 COPY git-credential.mjs /usr/local/bin/devhub-git-credential
 RUN chmod 0755 /usr/local/bin/bootstrap.sh /usr/local/bin/profile-init.sh /usr/local/bin/devhub-git-credential

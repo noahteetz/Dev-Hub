@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitCredential, GitCredentialOverview } from '../types'
 import { SettingsView } from './SettingsView'
 
+vi.mock('./AiProfilesPanel', () => ({ AiProfilesPanel: () => null }))
+
 const mocks = vi.hoisted(() => ({
   credentials: { list: vi.fn(), save: vi.fn(), verify: vi.fn(), remove: vi.fn() },
   repositories: { list: vi.fn(), owners: vi.fn(), refresh: vi.fn(), importSelection: vi.fn() },

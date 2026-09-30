@@ -79,3 +79,7 @@ jobs:
         run: docker build -t devhub-workspace:ci runner/workspace
       - name: Build egress proxy image
         run: docker build -t devhub-egress:ci runner/egress
+      - name: Test real Docker workspaces
+        run: |
+          docker run -d --name devhub-ci-proxy devhub-egress:ci
+          sudo env PATH="$PATH" node --test runner/test/docker.integration.mjs

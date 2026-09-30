@@ -23,6 +23,7 @@ import {
 } from '@mui/material'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { AiProfilesPanel } from './AiProfilesPanel'
 import { AccountPanel } from '../auth/AccountPanel'
 import { ColorModeChoice } from './ColorModeToggle'
 import { RepositoryPickerDialog } from './RepositoryPickerDialog'
@@ -41,13 +42,13 @@ const providerCopy: Record<'GITHUB' | 'GITLAB', ProviderCopy> = {
   GITHUB: {
     name: 'GitHub',
     tokenUrl: 'https://github.com/settings/tokens/new?scopes=repo,read:org&description=Dev%20Hub',
-    scopeHint: 'A classic token needs the scopes repo and read:org. A fine-grained token needs Contents and Metadata set to read.',
+    scopeHint: 'A classic token needs the scopes repo and read:org. A fine-grained token needs Contents and Metadata set to read. Workspace push additionally needs Contents write access.',
     organizationHint: 'A fine-grained token has to be approved per organization by an owner. With single sign-on, a classic token also has to be authorized for the organization, otherwise its repositories stay invisible without any error.',
   },
   GITLAB: {
     name: 'GitLab',
     tokenUrl: 'https://gitlab.com/-/user_settings/personal_access_tokens?name=Dev+Hub&scopes=read_api,read_repository',
-    scopeHint: 'The token needs the scopes read_api and read_repository.',
+    scopeHint: 'The token needs the scopes read_api and read_repository. Add write_repository to push from a workspace.',
     organizationHint: 'Group projects appear as soon as the account behind the token is a member with at least reporter access.',
   },
 }
@@ -146,6 +147,7 @@ export function SettingsView({ onProjectsChanged }: SettingsViewProps) {
   return (
     <Box component="main" sx={{ maxWidth: 760, mx: 'auto', px: { xs: 2, sm: 3 }, py: { xs: 3, sm: 5 }, width: '100%' }}>
       <AccountPanel />
+      <AiProfilesPanel />
 
       <Typography component="h2" sx={{ fontWeight: 800, mb: 1 }} variant="h5">
         Appearance

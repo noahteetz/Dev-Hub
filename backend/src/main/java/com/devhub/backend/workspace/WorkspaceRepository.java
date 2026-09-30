@@ -14,6 +14,12 @@ import org.springframework.stereotype.Repository;
 public class WorkspaceRepository {
     private final JdbcTemplate jdbc;
     public WorkspaceRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public void lockProject(long id) {
+        jdbc.queryForObject("SELECT id FROM projects WHERE id = ? FOR UPDATE", Long.class, id);
+    }
+    public void lockWorkspace(String id) {
+        jdbc.queryForObject("SELECT id FROM workspaces WHERE id = ? FOR UPDATE", String.class, id);
+    }
     public void lockUser(long userId) {
         jdbc.queryForObject("SELECT id FROM app_users WHERE id = ? FOR UPDATE", Long.class, userId);
     }

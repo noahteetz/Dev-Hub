@@ -259,7 +259,19 @@ export class Manager {
   async report(meta) {
     const running = (await this.docker.inspect(this.name(meta.id)))?.State.Running;
     const container = running ? this.name(meta.id) : await this.container(meta, true);
-    try { return await gitReport(command => this.docker.exec(container, command), meta.repositoryUrl); }
+    try {
+      const report = await gitReport(command => this.docker.exec(container, command), meta.repositoryUrl);
+      const scratch = await this.docker.exec(container, ['find', '/workspace', '-mindepth', '1', '-maxdepth', '1', '!', '-name', 'repo', '-print']);
+      const home = await this.docker.exec(container, ['find', '/home/workspace', '-mindepth', '1', '-maxdepth', '1',
+        '!', '-name', '.gitconfig', '!', '-name', '.bash_history', '!', '-name', '.bashrc', '!', '-name', '.profile', '!', '-name', '.bash_logout', '-print']);
+      if (scratch.code !== 0 || home.code !== 0) {
+        report.safe = false; report.known = false; report.warnings.push('Files outside the checkout could not be checked');
+      } else if ((scratch.output + home.output).trim()) {
+        report.safe = false; report.warnings.push('Files outside the Git checkout are not saved upstream');
+        report.changedFiles.push(...(scratch.output + home.output).trim().split('\n').slice(0, 50));
+      }
+      return report;
+    }
     finally {
       if (!running) { await this.docker.remove(this.name(meta.id, true)); await this.cleanNetwork(meta.id); await this.closeBroker(meta.id); }
     }

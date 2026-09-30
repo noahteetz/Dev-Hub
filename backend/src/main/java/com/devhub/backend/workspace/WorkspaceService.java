@@ -52,6 +52,7 @@ public class WorkspaceService {
     public Workspace create(long projectId, Create body) {
         access.feature(); access.project(projectId, user.id());
         if (body == null) throw new InvalidRequestException("Workspace settings are required");
+        repository.lockProject(projectId);
         var project = projects.findById(projectId);
         if (project.status() == ProjectStatus.ARCHIVED) throw new ConflictException("Restore the project before starting a workspace");
         String url = urls.parse(project.repositoryUrl()).canonicalUrl();
@@ -76,7 +77,7 @@ public class WorkspaceService {
     }
     @Transactional
     public Workspace start(String id) {
-        var w = own(id); repository.lockUser(w.ownerId());
+        var initial = own(id); repository.lockUser(initial.ownerId()); repository.lockWorkspace(id); var w = own(id);
         if (projects.findById(w.projectId()).status() == ProjectStatus.ARCHIVED) throw new ConflictException("Restore the project first");
         if (w.desired().equals("RUNNING") && !w.status().equals("ERROR")) return get(id);
         if (!List.of("STOPPED", "ERROR").contains(w.status())) throw new ConflictException("Wait for the current workspace operation");
@@ -84,8 +85,9 @@ public class WorkspaceService {
         repository.renew(id, access.expiresAt()); repository.desired(id, "RUNNING");
         return repository.find(id).orElseThrow();
     }
+    @Transactional
     public Workspace stop(String id) {
-        var w = own(id);
+        own(id); repository.lockWorkspace(id); var w = own(id);
         if (!w.desired().equals("STOPPED") || w.status().equals("ERROR")) repository.desired(id, "STOPPED");
         return repository.find(id).orElseThrow();
     }

@@ -361,3 +361,55 @@ export interface ReferenceGroup {
   outgoing: EntityReference[]
   incoming: EntityReference[]
 }
+
+export interface RemoteWorkspace {
+  id: string
+  projectId: number
+  ownerId: number
+  repositoryUrl: string
+  branch: string
+  newBranch: boolean
+  commitName: string
+  commitEmail: string
+  status: 'PROVISIONING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'DELETING' | 'DELETED' | 'ERROR'
+  desired: 'RUNNING' | 'STOPPED' | 'DELETED'
+  generation: number
+  error: string
+  authorizedUntil: string
+  createdAt: string
+  updatedAt: string
+}
+export interface AiProfile {
+  id: string
+  provider: 'CLAUDE' | 'CODEX'
+  name: string
+  createdAt: string
+}
+export interface WorkspaceTerminal {
+  id: string
+  workspaceId: string
+  provider: 'SHELL' | 'CLAUDE' | 'CODEX'
+  profileId: string | null
+}
+export interface WorkspaceGitReport {
+  safe: boolean
+  known: boolean
+  branch: string
+  warnings: string[]
+  changedFiles: string[]
+  unpushedBranches: string[]
+}
+export interface WorkspaceResources {
+  status: string
+  memoryBytes: number
+  cpuPercent: number
+  diskBytes: number
+  lastActivityAt: string | null
+  reason: string
+}
+export interface WorkspaceCreate {
+  branch: string
+  newBranch: boolean
+  commitName: string
+  commitEmail: string
+}

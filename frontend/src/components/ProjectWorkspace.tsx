@@ -40,6 +40,7 @@ import { formatDate } from '../utils/formatDate'
 import { projectCan, roleLabel } from '../utils/projectPermissions'
 import { EmptyState } from './EmptyState'
 import { MarkdownView } from './MarkdownView'
+import { RemoteWorkspacePanel } from './RemoteWorkspacePanel'
 import { RepositoryPanel } from './RepositoryPanel'
 
 export type WorkspaceTab = 'notes' | 'snippets' | 'ideas' | 'todos'
@@ -698,6 +699,7 @@ export function ProjectWorkspace({
   onCreateProject,
 }: ProjectWorkspaceProps) {
   const [tagFilter, setTagFilter] = useState('')
+  const [remoteOpen, setRemoteOpen] = useState(false)
 
   if (!project) {
     return (
@@ -829,6 +831,11 @@ export function ProjectWorkspace({
             repository={repository}
           />
         ) : null}
+
+        {!isSystemSection && project.role !== 'VIEWER' ? <Box sx={{ mt: 2 }}>
+          <Button onClick={() => setRemoteOpen(open => !open)}>{remoteOpen ? 'Hide remote workspace' : 'Remote workspace'}</Button>
+          {remoteOpen ? <RemoteWorkspacePanel key={project.id} project={project} /> : null}
+        </Box> : null}
 
         <Box sx={{ mt: 3.5 }}>
           <Tabs
