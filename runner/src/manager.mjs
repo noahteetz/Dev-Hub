@@ -347,11 +347,13 @@ export class Manager {
   async attach(id, terminal, socket) {
     uuid(id); uuid(terminal);
     return this.serial.run(id, async () => {
+    if (socket.readyState !== 1) throw new Error('Terminal disconnected');
     const meta = await this.read(id);
     if (!meta?.terminals?.some(t => t.id === terminal) || meta.status !== 'RUNNING') throw new Error('Unknown terminal');
     const key = id + ':' + terminal;
     const previous = this.connections.get(key); if (previous) previous.close();
     const tty = await this.docker.tty(this.name(id), ['tmux', 'attach-session', '-t', terminal]);
+    if (socket.readyState !== 1) { tty.stream.destroy(); throw new Error('Terminal disconnected'); }
     let closed = false;
     const close = () => {
       if (closed) return; closed = true; tty.stream.destroy();

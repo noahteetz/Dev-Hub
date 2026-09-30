@@ -59,7 +59,10 @@ server.on('upgrade', (request, socket, head) => {
   if (!authorized(request) || !match) { socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); socket.destroy(); return; }
   try { uuid(match[1]); uuid(match[2]); } catch { socket.destroy(); return; }
   sockets.handleUpgrade(request, socket, head, ws => {
-    manager.attach(match[1], match[2], ws).catch(() => ws.close(1011));
+    // The upgrade finishes before Docker has attached its PTY. Hold incoming input
+    // on the TCP socket until attach installs its bounded message handlers.
+    ws.pause();
+    manager.attach(match[1], match[2], ws).then(() => ws.resume()).catch(() => ws.close(1011));
   });
 });
 let maintenanceRunning = false;
