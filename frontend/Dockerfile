@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --registry=https://registry.npmjs.org
+RUN npm ci --registry=https://registry.npmjs.org
 COPY . .
 RUN npm run build
 

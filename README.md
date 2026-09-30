@@ -189,6 +189,14 @@ Runner: cd runner, npm ci, npm run lint, npm test. CI additionally builds the ru
 npm run build
 ```
 
+The root npm commands select the Gradle wrapper for Windows, macOS, or Linux.
+Local `bootRun` loads `.env`, uses the same PostgreSQL settings as Compose, and defaults to no login.
+`npm run setup` installs the locked dependencies for the frontend and workspace runner.
+`npm test` runs the backend, frontend, and runner unit/integration suites;
+`npm --prefix frontend run lint` and `npm --prefix runner run lint` check both JavaScript applications.
+The Docker and HTTP/WebSocket acceptance tests require the workspace images and a separate test stack,
+as configured in `.github/workflows/ci.yml`.
+
 ## Containers
 
 ```powershell
