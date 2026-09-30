@@ -142,6 +142,16 @@ whose quota has not reset yet are all left out, and one unreachable repository d
 
 An open browser tab picks the new data up when it comes back into focus, at most once a minute.
 
+## Remote workspaces
+
+Remote workspaces run in the existing Docker environment and are opt-in. In a project, open **Remote workspace** to create a personal checkout on an existing or new branch. OWNER and EDITOR project access plus the Keycloak realm role devhub-workspace are required.
+
+**Stop** ends compute and keeps files; **Resume** starts another container with those files. **Delete checkout** verifies Git again after stopping all writers. Uncommitted/untracked/ignored files, stashes, unpushed branches, detached commits and unknown Git state block normal deletion. Discarding requires the exact workspace ID. Personal Claude/Codex profiles survive checkout deletion and can be managed separately in Settings.
+
+A profile terminal opens a shell with that account's configuration. Run claude and /login, or codex login --device-auth followed by codex. Git commit and push run in the terminal with your own Git token; project sharing does not grant upstream Git access.
+
+See [deployment and limits](deploy/REMOTE_WORKSPACES.md) before enabling the feature. CPU/RAM/process limits are enforced by Docker; disk usage has a measured budget and free-space reserve, not a hard filesystem quota. Workspaces use an internal network and HTTP(S) egress proxy. No Docker socket or preview ports are exposed to a workspace.
+
 ## Backend API
 
 The backend exposes CRUD endpoints for projects and their stored information:
@@ -169,11 +179,23 @@ Each resource supports `POST`, `GET`, `PUT`, and `DELETE` where applicable. Code
 
 Use the Ideas tab to collect possibilities without turning them into commitments. Add tags such as `backend`, `release`, or `research` while creating or editing ideas and todos; the same tag is suggested across projects and can be used to filter either tab. When an idea becomes actionable, convert it to create an open todo with the idea's title, details, and tags. Completed todos stay visible and can be reopened.
 
+## Workspace verification
+
+Runner: cd runner, npm ci, npm run lint, npm test. CI additionally builds the runner/workspace/egress images, tests real Docker containers and runs PostgreSQL + Spring + runner HTTP + WebSocket/PTY end to end. Personal CLI device login and the production proxy/realm setup require manual verification.
+
 ## Build
 
 ```powershell
 npm run build
 ```
+
+The root npm commands select the Gradle wrapper for Windows, macOS, or Linux.
+Local `bootRun` loads `.env`, uses the same PostgreSQL settings as Compose, and defaults to no login.
+`npm run setup` installs the locked dependencies for the frontend and workspace runner.
+`npm test` runs the backend, frontend, and runner unit/integration suites;
+`npm --prefix frontend run lint` and `npm --prefix runner run lint` check both JavaScript applications.
+The Docker and HTTP/WebSocket acceptance tests require the workspace images and a separate test stack,
+as configured in `.github/workflows/ci.yml`.
 
 ## Containers
 

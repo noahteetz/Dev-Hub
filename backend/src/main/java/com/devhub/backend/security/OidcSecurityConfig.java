@@ -40,6 +40,8 @@ class OidcSecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(requests -> {
 					requests.requestMatchers(PUBLIC_PATHS).permitAll();
+                    // These paths authenticate with an atomically consumed terminal ticket or runner secret.
+                    requests.requestMatchers("/api/workspaces/*/terminals/*/connect", "/api/workspace-runner/credentials/*").permitAll();
 					if (StringUtils.hasText(requiredRole)) {
 						requests.anyRequest().hasRole(requiredRole);
 					} else {

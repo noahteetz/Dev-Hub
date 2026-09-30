@@ -1,4 +1,10 @@
 import type {
+  RemoteWorkspace,
+  AiProfile,
+  WorkspaceTerminal,
+  WorkspaceGitReport,
+  WorkspaceResources,
+  WorkspaceCreate,
   CodeSnippet,
   CodeSnippetInput,
   GitCredential,
@@ -156,6 +162,28 @@ function queryString(params: ContentListParams | Record<string, unknown> = {}) {
 }
 
 export const api = {
+  workspaces: {
+    config: () => request<{ enabled: boolean; allowed: boolean }>('/api/workspaces/config'),
+    list: (projectId: number) => request<RemoteWorkspace[]>('/api/projects/' + projectId + '/workspaces'),
+    mine: () => request<RemoteWorkspace[]>('/api/workspaces'),
+    get: (id: string) => request<RemoteWorkspace>('/api/workspaces/' + id),
+    create: (projectId: number, input: WorkspaceCreate) => request<RemoteWorkspace>('/api/projects/' + projectId + '/workspaces', { method: 'POST', body: jsonBody(input) }),
+    start: (id: string) => request<RemoteWorkspace>('/api/workspaces/' + id + '/start', { method: 'POST' }),
+    stop: (id: string) => request<RemoteWorkspace>('/api/workspaces/' + id + '/stop', { method: 'POST' }),
+    resources: (id: string) => request<WorkspaceResources>('/api/workspaces/' + id + '/resources'),
+    git: (id: string) => request<WorkspaceGitReport>('/api/workspaces/' + id + '/git-status'),
+    deletionCheck: (id: string) => request<WorkspaceGitReport>('/api/workspaces/' + id + '/deletion-check', { method: 'POST' }),
+    remove: (id: string, discard = false, confirmation = '') => request<RemoteWorkspace>('/api/workspaces/' + id, { method: 'DELETE', body: jsonBody({ discard, confirmation }) }),
+    terminals: (id: string) => request<WorkspaceTerminal[]>('/api/workspaces/' + id + '/terminals'),
+    openTerminal: (id: string, provider: WorkspaceTerminal['provider'], profileId: string | null) => request<WorkspaceTerminal>('/api/workspaces/' + id + '/terminals', { method: 'POST', body: jsonBody({ provider, profileId }) }),
+    closeTerminal: (id: string, terminal: string) => request<void>('/api/workspaces/' + id + '/terminals/' + terminal, { method: 'DELETE' }),
+    ticket: (id: string, terminal: string) => request<{ ticket: string; expiresAt: string }>('/api/workspaces/' + id + '/terminals/' + terminal + '/ticket', { method: 'POST' }),
+  },
+  aiProfiles: {
+    list: () => request<AiProfile[]>('/api/ai-profiles'),
+    create: (provider: AiProfile['provider'], name: string) => request<AiProfile>('/api/ai-profiles', { method: 'POST', body: jsonBody({ provider, name }) }),
+    remove: (id: string) => request<void>('/api/ai-profiles/' + id, { method: 'DELETE' }),
+  },
   search: {
     query: ({ q, types, projectId, tags, includeArchived, includeCompleted, limit, offset }: SearchParams) =>
       request<SearchResult[]>(`/api/search${queryString({ q, types, projectId, tags, includeArchived, includeCompleted, limit, offset })}`),

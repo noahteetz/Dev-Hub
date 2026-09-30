@@ -26,7 +26,7 @@ audience mapper in one step.
 | Realm | `dev-hub`, display name Dev Hub |
 | Browser client | `dev-hub-frontend`, public, authorization code + PKCE (S256) |
 | API client | `dev-hub-backend`, confidential, every flow off |
-| Realm roles | `devhub-user`, `devhub-admin` |
+| Realm roles | `devhub-user`, `devhub-admin`, optional `devhub-workspace` |
 | Redirect URIs | `https://dev-hub.noahteetz.de/*` and `http://localhost:5173/*` |
 | Web origins | `https://dev-hub.noahteetz.de` and `http://localhost:5173` |
 | Audience mapper | Writes `dev-hub-backend` into the `aud` claim of every access token |
@@ -48,9 +48,9 @@ The realm starts without any user.
 Without `devhub-user` the login succeeds and every API call answers `403`. The
 app says so rather than showing an empty page.
 
-Dev Hub has no per-user data: everyone in this realm who holds `devhub-user`
-sees the same projects, notes and stored Git tokens. Only add accounts that are
-meant to see everything.
+Dev Hub scopes projects, inbox entries, Git tokens and AI profiles by user. Owners can explicitly share projects with VIEWER or EDITOR members. Adding an account does not expose another account's private data or credentials.
+
+Remote execution additionally requires the optional realm role `devhub-workspace` and enabled runner services. See [Remote Workspaces](REMOTE_WORKSPACES.md) for setup, resources, persistence and manual acceptance.
 
 ### Why two clients
 

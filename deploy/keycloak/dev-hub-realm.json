@@ -27,6 +27,10 @@
       {
         "name": "devhub-admin",
         "description": "Reserved for future administrative screens; grants nothing extra today."
+      },
+      {
+        "name": "devhub-workspace",
+        "description": "May start personal remote workspaces, additionally requiring OWNER or EDITOR project access."
       }
     ]
   },
