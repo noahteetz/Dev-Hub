@@ -89,12 +89,17 @@ class WorkspaceIntegrationTests {
         assertThatThrownBy(() -> as(owner, () -> service.delete(w.id(), new DeleteInput(true, "yes")))).isInstanceOf(InvalidRequestException.class);
         assertThat(as(owner, () -> service.delete(w.id(), new DeleteInput(true, w.id()))).desired()).isEqualTo("DELETED");
     }
-    @Test void terminalProfilesArePersonalAndCannotBeUsedConcurrently() {
+    @Test void terminalProfilesArePersonalAndBackSeveralTerminalsAcrossWorkspaces() {
         var w = running(owner);
         var p = as(owner, () -> service.createProfile(new ProfileInput("CODEX", "Personal")));
         var t = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id())));
         assertThat(t.profileId()).isEqualTo(p.id());
-        assertThatThrownBy(() -> as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id())))).isInstanceOf(ConflictException.class);
+        var again = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id())));
+        var secondWorkspace = as(owner, () -> service.create(as(owner, () -> projects.create(new ProjectRequest("Second", "",
+                "https://github.com/example/repository", "", List.of()))).id(), input()));
+        repository.complete(secondWorkspace, "RUNNING", "");
+        var elsewhere = as(owner, () -> service.createTerminal(secondWorkspace.id(), new TerminalInput("CODEX", p.id())));
+        assertThat(List.of(again.profileId(), elsewhere.profileId())).containsOnly(p.id());
         var other = running(editor);
         assertThatThrownBy(() -> as(editor, () -> service.createTerminal(other.id(), new TerminalInput("CODEX", p.id())))).isInstanceOf(ResourceNotFoundException.class);
         assertThatThrownBy(() -> as(owner, () -> { service.deleteProfile(p.id()); return null; })).isInstanceOf(ConflictException.class);

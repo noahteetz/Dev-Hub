@@ -148,7 +148,6 @@ public class WorkspaceService {
         if (!provider.equals("SHELL")) {
             var p = repository.profile(uuid(input.profileId()), w.ownerId());
             if (!p.provider().equals(provider)) throw new InvalidRequestException("Choose a profile of the selected provider");
-            if (repository.profileUsed(p.id())) throw new ConflictException("This profile already has an open terminal; reconnect or close it first");
             profile = p.id();
         }
         if (repository.terminals(id).size() >= 8) throw new ConflictException("At most eight terminals per workspace");
