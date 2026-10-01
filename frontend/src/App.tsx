@@ -20,6 +20,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { EntryEditor } from './components/EntryEditor'
 import { SearchView } from './components/SearchView'
 import { SettingsView } from './components/SettingsView'
+import { WorkspacesView } from './components/WorkspacesView'
 import type {
   ContentType,
   CodeSnippet,
@@ -110,7 +111,7 @@ function App() {
 	const entryType: ContentType | null = entryMatch
 		? ({ notes: 'NOTE', snippets: 'SNIPPET', ideas: 'IDEA', todos: 'TODO' } as const)[entryMatch[1] as 'notes' | 'snippets' | 'ideas' | 'todos']
 		: null
-	const knownRoute = location.pathname === '/' || /^\/(dashboard|archive|inbox|notes|ideas|search|settings)$/.test(location.pathname) || projectMatch || entryMatch
+	const knownRoute = location.pathname === '/' || /^\/(dashboard|archive|inbox|notes|ideas|search|settings|workspaces)$/.test(location.pathname) || projectMatch || entryMatch
 	const routeProjectId = projectMatch ? Number(projectMatch[1]) : null
   const [projects, setProjects] = useState<Project[]>([])
   const [archivedProjects, setArchivedProjects] = useState<Project[]>([])
@@ -286,9 +287,19 @@ function App() {
   const knowledgeMode = location.pathname === '/inbox' ? 'inbox' : location.pathname === '/notes' ? 'notes' : location.pathname === '/ideas' ? 'ideas' : null
   const searchRoute = location.pathname === '/search'
   const settingsRoute = location.pathname === '/settings'
+  const workspacesRoute = location.pathname === '/workspaces'
+  const [workspacesAvailable, setWorkspacesAvailable] = useState(false)
   const routePage = !knownRoute ? 'Page not found' : null
   // Views without the project sidebar use the full width of the shell grid.
   const fullWidth = Boolean(routePage || entryMatch || searchRoute || settingsRoute || knowledgeMode)
+
+  useEffect(() => {
+    let alive = true
+    api.workspaces.config()
+      .then((config) => { if (alive) setWorkspacesAvailable(config.enabled && config.allowed) })
+      .catch(() => { /* the sidebar simply leaves the entry out */ })
+    return () => { alive = false }
+  }, [])
 
   useEffect(() => {
     const openShortcut = (event: KeyboardEvent) => {
@@ -768,8 +779,11 @@ function App() {
         }}
         projects={projects}
         selectedProjectId={selectedProjectId}
+        workspacesAvailable={workspacesAvailable}
       />
-      {selectedProject ? (
+      {workspacesRoute ? (
+        <WorkspacesView projects={[...projects, ...archivedProjects]} />
+      ) : selectedProject ? (
         <ProjectWorkspace
           activeTab={activeTab}
           ideas={ideas}
