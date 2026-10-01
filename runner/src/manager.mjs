@@ -45,6 +45,7 @@ export class Manager {
     this.startSerial = new Serial();
     this.cpu = number(process.env.WORKSPACE_CPUS, 2, 0.25, 16);
     this.memory = number(process.env.WORKSPACE_MEMORY_BYTES, 4294967296, 536870912, 34359738368);
+    this.pids = number(process.env.WORKSPACE_PIDS, 1024, 64, 32768);
     this.diskBudget = number(process.env.WORKSPACE_DISK_BYTES, 5368709120, 104857600, 107374182400);
     this.minFree = number(process.env.RUNNER_MIN_FREE_BYTES, 10737418240, 0, 107374182400);
     this.maxRuntime = number(process.env.WORKSPACE_MAX_RUNTIME_SECONDS, 14400, 60, 86400);
@@ -162,14 +163,15 @@ export class Manager {
     return {Image: this.image, Cmd: ['sleep', 'infinity'], User: init ? '0:0' : '1000:1000', WorkingDir: '/workspace',
       Env: ['HOME=/home/workspace', 'TERM=xterm-256color', 'LANG=C.UTF-8',
         'HTTP_PROXY=http://egress:3128', 'HTTPS_PROXY=http://egress:3128', 'http_proxy=http://egress:3128',
-        'https_proxy=http://egress:3128', 'NO_PROXY=', 'NODE_USE_ENV_PROXY=1',
+        'https_proxy=http://egress:3128', 'NO_PROXY=localhost,127.0.0.1,::1', 'no_proxy=localhost,127.0.0.1,::1', 'NODE_USE_ENV_PROXY=1',
         'JAVA_TOOL_OPTIONS=-Dhttp.proxyHost=egress -Dhttp.proxyPort=3128 -Dhttps.proxyHost=egress -Dhttps.proxyPort=3128',
         'GIT_TERMINAL_PROMPT=0'],
       Labels: {'devhub.managed': 'true', 'devhub.workspace': meta.id, 'devhub.owner': String(meta.ownerId), 'devhub.check': String(check)},
       HostConfig: {Mounts: this.mounts(meta, !init), NetworkMode: init ? 'none' : this.network(meta.id),
         ReadonlyRootfs: true, CapDrop: ['ALL'], CapAdd: init ? ['CHOWN', 'DAC_OVERRIDE', 'FOWNER'] : [],
         SecurityOpt: ['no-new-privileges:true'], Memory: this.memory, MemorySwap: this.memory, NanoCpus: Math.round(this.cpu * 1e9),
-        PidsLimit: 256, Init: true, Tmpfs: {'/tmp': 'rw,nosuid,nodev,size=256m', '/run': 'rw,nosuid,nodev,size=16m'},
+        // Threads count as PIDs; a JVM build plus a dev server and headless Chromium need well over 256. Chromium also needs more than the 64 MiB default /dev/shm.
+        PidsLimit: this.pids, ShmSize: Math.min(1073741824, Math.floor(this.memory / 4)), Init: true, Tmpfs: {'/tmp': 'rw,nosuid,nodev,size=256m', '/run': 'rw,nosuid,nodev,size=16m'},
         LogConfig: {Type: 'local', Config: {'max-size': '1m', 'max-file': '2'}}}};
   }
   async initVolumes(meta) {

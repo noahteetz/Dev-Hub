@@ -59,15 +59,19 @@ test('real Docker: clone, private profiles, terminal reconnect, stop/resume, lim
   assert.equal(runtime.HostConfig.ReadonlyRootfs, true);
   assert.deepEqual(runtime.HostConfig.CapDrop, ['ALL']);
   assert.equal(runtime.HostConfig.Memory, 4294967296);
-  assert.equal(runtime.HostConfig.PidsLimit, 256);
+  assert.equal(runtime.HostConfig.PidsLimit, 1024);
+  assert.equal(runtime.HostConfig.ShmSize, 1073741824);
   assert.equal(runtime.Mounts.some(m => m.Destination === '/var/run/docker.sock'), false);
   const network = await manager.docker.request('GET', '/networks/' + manager.network(id));
   assert.equal(network.Internal, true);
   assert.equal((await manager.git(id)).safe, true);
   const read = async (...command) => manager.docker.exec(manager.name(id), command);
-  assert.equal((await read('bash', '-c', 'node --version && java -version && claude --version && codex --version && gh --version')).code, 0);
+  assert.equal((await read('bash', '-c', 'node --version && java -version && claude --version && codex --version && gh --version && jq --version && rg --version && psql --version')).code, 0);
   assert.notEqual((await read('curl', '--noproxy', '*', '--connect-timeout', '2', '-s', 'https://github.com/')).code, 0);
-  assert.equal((await read('curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '5', 'http://127.0.0.1/')).output.trim(), '403');
+  assert.equal((await read('curl', '-s', '--proxy', 'http://egress:3128', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '5', 'http://127.0.0.1/')).output.trim(), '403');
+  // Local dev servers are reached directly, not through the proxy that blocks loopback.
+  assert.equal((await read('bash', '-c', 'python3 -m http.server 8765 -d /tmp >/dev/null 2>&1 & server=$!; trap "kill $server" EXIT; for i in $(seq 50); do curl -sf -o /dev/null http://localhost:8765/ && exit 0; sleep 0.1; done; exit 1')).code, 0);
+  assert.equal((await read('bash', '-c', 'devhub-postgres start ci && psql "$(devhub-postgres url ci)" -Atc "select 1" && devhub-postgres reset')).code, 0);
   await manager.initVolumes({id: otherId, ownerId: otherOwner});
   const isolated = await manager.docker.request('POST', '/containers/create', manager.config({id: otherId, ownerId: otherOwner}, {init: true}));
   try {
