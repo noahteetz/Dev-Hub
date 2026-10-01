@@ -150,7 +150,7 @@ Each user can keep three workspaces (one per project) and run two of them at onc
 
 **Stop** ends compute and keeps files; **Resume** starts another container with those files. **Delete checkout** verifies Git again after stopping all writers. Uncommitted/untracked/ignored files, stashes, unpushed branches, detached commits and unknown Git state block normal deletion. Discarding requires the exact workspace ID. Personal Claude/Codex profiles survive checkout deletion and can be managed separately in Settings.
 
-A profile terminal opens a shell with that account's configuration. Run claude and /login, or codex login --device-auth followed by codex. Git commit and push run in the terminal with your own Git token; project sharing does not grant upstream Git access.
+A profile terminal opens a shell with that account's configuration. Run claude and /login, or codex login --device-auth followed by codex. Git commit and push run in the terminal with your own Git token, and for GitHub repositories `gh` uses the same token; project sharing does not grant upstream Git access.
 
 See [deployment and limits](deploy/REMOTE_WORKSPACES.md) before enabling the feature. CPU/RAM/process limits are enforced by Docker; disk usage has a measured budget and free-space reserve, not a hard filesystem quota. Workspaces use an internal network and HTTP(S) egress proxy. No Docker socket or preview ports are exposed to a workspace.
 

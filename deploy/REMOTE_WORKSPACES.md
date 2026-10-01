@@ -41,9 +41,20 @@ Die Produktions-Compose-Datei bleibt im bestehenden Deploymentpfad. Der Runner b
 - Das Dateibudget (standardmäßig 5 GiB) wird alle 30 Sekunden gemessen. Bei Überschreitung wird Compute gestoppt. Starten wird unterhalb der freien Reserve (10 GiB) blockiert. Das sind Softwaregrenzen, keine harte Disk-Quote; schnelle Schreiblast kann das Budget zwischen Prüfungen überschreiten. Für eine harte Quote muss der Server eine geeignete Volume-/Dateisystemlösung bereitstellen.
 - Container teilen den Host-Kernel. Diese Konfiguration ersetzt keine VM-Isolation für beliebige untrusted Nutzer. Das Feature zunächst nur für ausdrücklich berechtigte Konten freigeben.
 - Änderungen im Git-Metadatenverzeichnis durch den ausführenden Nutzer sind möglich. Der Löschschutz schützt vor versehentlichem Datenverlust, er ist kein Backup und kein Beweis gegen absichtlich manipulierte Git-Daten.
-- Öffentliche Previewports, beliebige Images/Devcontainer, SSH-Keys und parallele Agent-Worktrees gehören nicht zu dieser Iteration.
+- Öffentliche Previewports, Docker im Workspace, beliebige Images/Devcontainer, SSH-Keys und parallele Agent-Worktrees gehören nicht zu dieser Iteration.
 
 Projektlöschung verlangt, dass alle zugehörigen Checkouts abgeschlossen sind. Auch ein entfernter Editor kann noch aufbewahrte Dateien haben. Diese werden nicht durch Rollenentzug gelöscht: zum kontrollierten Abschluss den Zugang gezielt wiederherstellen oder administrativ die Daten sichern und bereinigen. Owner-Rechte erlauben keine Einsicht in fremde Profile.
+
+## Werkzeuge und Tests im Workspace
+
+Das Image enthält Java 25, Node 22, Git, die GitHub CLI (gh, nutzt dasselbe Token wie Git), Python 3, jq, ripgrep, make, zip/unzip, xz, sqlite3, PostgreSQL und die Systembibliotheken für headless Chromium. Lokale Dienste wie Vite, Spring oder Postgres auf localhost werden direkt angesprochen, nicht über den Egress-Proxy (NO_PROXY). Pro Workspace gelten WORKSPACE_PIDS Prozesse und Threads (Standard 1024) und ein /dev/shm von einem Viertel des Arbeitsspeichers, höchstens 1 GiB.
+
+- PostgreSQL: devhub-postgres start [datenbank...] startet eine Wegwerf-Instanz auf localhost:5432, Nutzer postgres ohne Passwort. devhub-postgres url [datenbank] gibt die URL aus; stop, status und reset (löscht die Daten) gibt es ebenfalls. Die Daten liegen im Home-Volume. Für Dev Hub selbst: devhub-postgres start devhub, danach Backend mit DATABASE_URL=jdbc:postgresql://localhost:5432/devhub, DATABASE_USERNAME=postgres und DEVHUB_AUTH_ENABLED=false starten.
+- Browser: Im Projekt npx playwright install chromium ausführen. Der Browser passend zur Playwright-Version des Projekts landet in ~/.cache/ms-playwright und bleibt über Stop/Resume erhalten. Tests laufen headless; xvfb-run steht für Fälle bereit, die einen Bildschirm erwarten. Previewports gibt es nicht, Screenshots und Traces landen als Dateien im Workspace.
+- .NET/C#: curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel LTS installiert das SDK nach ~/.dotnet, das bereits im PATH steht. Danach funktionieren dotnet build und dotnet test.
+- Godot: Das offizielle Linux-Binary (Godot_v…_linux.x86_64.zip aus den GitHub-Releases) nach ~/.local/bin entpacken. Mit --headless laufen Skripte, Exporte und Testframeworks wie GUT oder gdUnit4 ohne Grafik.
+- Unity: Editor und Lizenzierung sind für diese Container zu groß. Unity-Tests besser in CI (z. B. GameCI) ausführen; reine C#-Logik in einer eigenen Assembly lässt sich mit dotnet test im Workspace prüfen.
+- Docker ist im Workspace nicht verfügbar. Testcontainers und docker compose funktionieren daher nicht; Datenbanken über devhub-postgres bereitstellen.
 
 ## Betrieb, Backup und Wiederherstellung
 
