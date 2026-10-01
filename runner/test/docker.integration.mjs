@@ -65,7 +65,7 @@ test('real Docker: clone, private profiles, terminal reconnect, stop/resume, lim
   assert.equal(network.Internal, true);
   assert.equal((await manager.git(id)).safe, true);
   const read = async (...command) => manager.docker.exec(manager.name(id), command);
-  assert.equal((await read('bash', '-c', 'node --version && java -version && claude --version && codex --version')).code, 0);
+  assert.equal((await read('bash', '-c', 'node --version && java -version && claude --version && codex --version && gh --version')).code, 0);
   assert.notEqual((await read('curl', '--noproxy', '*', '--connect-timeout', '2', '-s', 'https://github.com/')).code, 0);
   assert.equal((await read('curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '5', 'http://127.0.0.1/')).output.trim(), '403');
   await manager.initVolumes({id: otherId, ownerId: otherOwner});
