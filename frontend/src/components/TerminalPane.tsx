@@ -1,12 +1,22 @@
 import { Alert, Box, Button, Stack, Typography } from '@mui/material'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { api } from '../api'
 import type { WorkspaceTerminal } from '../types'
 
-export function TerminalPane({ terminal }: { terminal: WorkspaceTerminal }) {
+interface TerminalPaneProps {
+  terminal: WorkspaceTerminal
+  /** Shown before the connection status, e.g. the project the terminal belongs to. */
+  title?: string
+  /** Extra header buttons. */
+  actions?: ReactNode
+  /** Fill the parent's height instead of the fixed default, and drop the footer hint. */
+  fill?: boolean
+}
+
+export function TerminalPane({ terminal, title, actions, fill = false }: TerminalPaneProps) {
   const container = useRef<HTMLDivElement | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [status, setStatus] = useState('Connecting')
@@ -86,14 +96,17 @@ export function TerminalPane({ terminal }: { terminal: WorkspaceTerminal }) {
     }
   }, [terminal.id, terminal.workspaceId, attempt])
   return (
-    <Stack spacing={1}>
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="body2">{terminal.provider} · {status}</Typography>
-        <Button size="small" onClick={() => { setStatus('Connecting'); setError(''); setAttempt(a => a + 1) }}>Reconnect</Button>
+    <Stack spacing={1} sx={fill ? { height: '100%', minHeight: 0 } : undefined}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', minWidth: 0 }}>
+        <Typography noWrap variant="body2">{title ? title + ' · ' : ''}{terminal.provider} · {status}</Typography>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexShrink: 0 }}>
+          <Button size="small" onClick={() => { setStatus('Connecting'); setError(''); setAttempt(a => a + 1) }}>Reconnect</Button>
+          {actions}
+        </Stack>
       </Stack>
       {error ? <Alert severity="error">{error}</Alert> : null}
-      <Box ref={container} aria-label="Remote terminal" sx={{ bgcolor: '#10141c', borderRadius: 1, p: 1, height: 440, overflow: 'hidden' }} />
-      <Typography color="text.secondary" variant="caption">Closing this panel disconnects the browser. Stop ends processes and keeps your files.</Typography>
+      <Box ref={container} aria-label="Remote terminal" sx={{ bgcolor: '#10141c', borderRadius: 1, p: 1, overflow: 'hidden', ...(fill ? { flex: 1, minHeight: 120 } : { height: 440 }) }} />
+      {fill ? null : <Typography color="text.secondary" variant="caption">Closing this panel disconnects the browser. Stop ends processes and keeps your files.</Typography>}
     </Stack>
   )
 }

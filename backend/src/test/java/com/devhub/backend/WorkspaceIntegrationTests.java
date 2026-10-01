@@ -89,12 +89,17 @@ class WorkspaceIntegrationTests {
         assertThatThrownBy(() -> as(owner, () -> service.delete(w.id(), new DeleteInput(true, "yes")))).isInstanceOf(InvalidRequestException.class);
         assertThat(as(owner, () -> service.delete(w.id(), new DeleteInput(true, w.id()))).desired()).isEqualTo("DELETED");
     }
-    @Test void terminalProfilesArePersonalAndCannotBeUsedConcurrently() {
+    @Test void terminalProfilesArePersonalAndBackSeveralTerminalsAcrossWorkspaces() {
         var w = running(owner);
         var p = as(owner, () -> service.createProfile(new ProfileInput("CODEX", "Personal")));
         var t = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id())));
         assertThat(t.profileId()).isEqualTo(p.id());
-        assertThatThrownBy(() -> as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id())))).isInstanceOf(ConflictException.class);
+        var again = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id())));
+        var secondWorkspace = as(owner, () -> service.create(as(owner, () -> projects.create(new ProjectRequest("Second", "",
+                "https://github.com/example/repository", "", List.of()))).id(), input()));
+        repository.complete(secondWorkspace, "RUNNING", "");
+        var elsewhere = as(owner, () -> service.createTerminal(secondWorkspace.id(), new TerminalInput("CODEX", p.id())));
+        assertThat(List.of(again.profileId(), elsewhere.profileId())).containsOnly(p.id());
         var other = running(editor);
         assertThatThrownBy(() -> as(editor, () -> service.createTerminal(other.id(), new TerminalInput("CODEX", p.id())))).isInstanceOf(ResourceNotFoundException.class);
         assertThatThrownBy(() -> as(owner, () -> { service.deleteProfile(p.id()); return null; })).isInstanceOf(ConflictException.class);
@@ -134,7 +139,33 @@ class WorkspaceIntegrationTests {
         repository.complete(w, "RUNNING", "");
         assertThat(repository.find(w.id()).orElseThrow().status()).isEqualTo("STOPPING");
     }
+    @Test void usersRunTwoWorkspacesAtOnceAndKeepAtMostThree() {
+        var first = as(owner, () -> service.create(newProject().id(), input()));
+        var second = as(owner, () -> service.create(newProject().id(), input()));
+        var third = newProject();
+        assertThatThrownBy(() -> as(owner, () -> service.create(third.id(), input())))
+                .isInstanceOf(ConflictException.class).hasMessageContaining("2");
+        as(owner, () -> service.stop(first.id()));
+        repository.complete(repository.find(first.id()).orElseThrow(), "STOPPED", "");
+        var kept = as(owner, () -> service.create(third.id(), input()));
+        assertThatThrownBy(() -> as(owner, () -> service.start(first.id()))).isInstanceOf(ConflictException.class);
+        as(owner, () -> service.stop(kept.id()));
+        repository.complete(repository.find(kept.id()).orElseThrow(), "STOPPED", "");
+        assertThat(as(owner, () -> service.start(first.id())).desired()).isEqualTo("RUNNING");
+        assertThatThrownBy(() -> as(owner, () -> service.create(newProject().id(), input())))
+                .isInstanceOf(ConflictException.class).hasMessageContaining("3");
+        assertThat(as(owner, () -> service.list(null))).extracting(Workspace::id)
+                .containsExactlyInAnyOrder(first.id(), second.id(), kept.id());
+    }
+    Project newProject() {
+        return as(owner, () -> projects.create(new ProjectRequest("Remote", "", "https://github.com/example/repository", "", List.of())));
+    }
     @Test void retainedStoppedWorkspacesCannotStarveNewLifecycleOperations() {
+        int limit = settings.maxPerUser;
+        settings.maxPerUser = 1000;
+        try { retainMany(); } finally { settings.maxPerUser = limit; }
+    }
+    private void retainMany() {
         for (int i = 0; i < 101; i++) {
             var oldProject = as(owner, () -> projects.create(new ProjectRequest("Retained", "",
                     "https://github.com/example/repository", "", List.of())));

@@ -42,6 +42,7 @@ export class Manager {
     this.backend = options.backend || process.env.DEVHUB_BACKEND_URL || 'http://backend:8080';
     this.token = options.token || process.env.DEVHUB_RUNNER_TOKEN;
     this.maxRunning = number(process.env.WORKSPACE_MAX_RUNNING, 2, 1, 16);
+    this.maxRunningPerOwner = number(options.maxRunningPerOwner ?? process.env.WORKSPACE_MAX_RUNNING_PER_USER, 2, 1, 16);
     this.startSerial = new Serial();
     this.cpu = number(process.env.WORKSPACE_CPUS, 2, 0.25, 16);
     this.memory = number(process.env.WORKSPACE_MEMORY_BYTES, 4294967296, 536870912, 34359738368);
@@ -210,12 +211,13 @@ export class Manager {
       if (previous && (input.generation < previous.generation || previous.status === 'DELETED'
           || previous.ownerId && previous.ownerId !== input.ownerId || previous.repositoryUrl && previous.repositoryUrl !== input.repositoryUrl))
         throw new Error('Stale workspace operation');
-      let activeCount = 0;
+      let activeCount = 0, ownerCount = 0;
       for (const other of await this.all()) {
-        if (other.id !== input.id && (await this.docker.inspect(this.name(other.id)))?.State.Running) activeCount++;
-        if (other.id !== input.id && other.ownerId === input.ownerId && (await this.docker.inspect(this.name(other.id)))?.State.Running)
-          throw new Error('Another workspace is running');
+        if (other.id === input.id || !(await this.docker.inspect(this.name(other.id)))?.State.Running) continue;
+        activeCount++;
+        if (other.ownerId === input.ownerId) ownerCount++;
       }
+      if (ownerCount >= this.maxRunningPerOwner) throw new Error('Owner active workspace limit reached');
       if (activeCount >= this.maxRunning) throw new Error('Runner active workspace limit reached');
       const disk = await fs.statfs(this.data);
       if (Number(disk.bavail) * Number(disk.bsize) < this.minFree) throw new Error('Runner free space below reserve');
@@ -431,7 +433,10 @@ export class Manager {
         if (current.status !== 'RUNNING') return;
         const container = await this.docker.inspect(this.name(meta.id));
         if (!container?.State.Running) { await this.stopRuntime(current); return; }
-        const disk = await this.docker.exec(container.Id, ['du', '-sb', '/workspace', '/home/workspace'], {workingDir: '/workspace'});
+        // A deploy can recreate the egress proxy, and the new container joins no
+        // existing workspace network. A missing proxy must not skip the limits below.
+        await this.ensureNetwork(meta.id).catch(() => {});
+        const disk =await this.docker.exec(container.Id, ['du', '-sb', '/workspace', '/home/workspace'], {workingDir: '/workspace'});
         if (disk.code === 0) current.diskBytes = disk.output.trim().split('\n').reduce((sum, line) => sum + (Number(line.split(/\s+/)[0]) || 0), 0);
         let active = [...this.connections.keys()].some(k => k.startsWith(meta.id + ':'));
         // A tmux pane normally has tmux + one shell/CLI process; descendants indicate ongoing work.

@@ -16,7 +16,7 @@ public class WorkspaceController {
     public WorkspaceController(WorkspaceService service, WorkspaceSettings settings, WorkspaceAccess access, TerminalTickets tickets) {
         this.service = service; this.settings = settings; this.access = access; this.tickets = tickets;
     }
-    @GetMapping("/api/workspaces/config") public Config config() { return new Config(settings.enabled, access.allowed()); }
+    @GetMapping("/api/workspaces/config") public Config config() { return new Config(settings.enabled, access.allowed(), settings.maxRunningPerUser, settings.maxPerUser); }
     @GetMapping("/api/workspaces") public List<Workspace> mine() { return service.list(null); }
     @GetMapping("/api/projects/{project}/workspaces") public List<Workspace> list(@PathVariable long project) { return service.list(project); }
     @PostMapping("/api/projects/{project}/workspaces") public Workspace create(@PathVariable long project, @RequestBody Create body) { return service.create(project, body); }

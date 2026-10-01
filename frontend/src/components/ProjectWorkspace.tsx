@@ -699,7 +699,8 @@ export function ProjectWorkspace({
   onCreateProject,
 }: ProjectWorkspaceProps) {
   const [tagFilter, setTagFilter] = useState('')
-  const [remoteOpen, setRemoteOpen] = useState(false)
+  // The workspace overview links here with ?workspace=open to show the panel right away.
+  const [remoteOpen, setRemoteOpen] = useState(() => new URLSearchParams(window.location.search).has('workspace'))
 
   if (!project) {
     return (

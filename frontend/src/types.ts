@@ -379,6 +379,14 @@ export interface RemoteWorkspace {
   createdAt: string
   updatedAt: string
 }
+export interface WorkspaceConfig {
+  enabled: boolean
+  allowed: boolean
+  /** How many of the user's workspaces may run at once. */
+  maxRunning: number
+  /** How many workspaces the user may keep, running or stopped. */
+  maxWorkspaces: number
+}
 export interface AiProfile {
   id: string
   provider: 'CLAUDE' | 'CODEX'
