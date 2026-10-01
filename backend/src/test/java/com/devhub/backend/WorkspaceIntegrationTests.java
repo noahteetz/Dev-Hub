@@ -134,7 +134,33 @@ class WorkspaceIntegrationTests {
         repository.complete(w, "RUNNING", "");
         assertThat(repository.find(w.id()).orElseThrow().status()).isEqualTo("STOPPING");
     }
+    @Test void usersRunTwoWorkspacesAtOnceAndKeepAtMostThree() {
+        var first = as(owner, () -> service.create(newProject().id(), input()));
+        var second = as(owner, () -> service.create(newProject().id(), input()));
+        var third = newProject();
+        assertThatThrownBy(() -> as(owner, () -> service.create(third.id(), input())))
+                .isInstanceOf(ConflictException.class).hasMessageContaining("2");
+        as(owner, () -> service.stop(first.id()));
+        repository.complete(repository.find(first.id()).orElseThrow(), "STOPPED", "");
+        var kept = as(owner, () -> service.create(third.id(), input()));
+        assertThatThrownBy(() -> as(owner, () -> service.start(first.id()))).isInstanceOf(ConflictException.class);
+        as(owner, () -> service.stop(kept.id()));
+        repository.complete(repository.find(kept.id()).orElseThrow(), "STOPPED", "");
+        assertThat(as(owner, () -> service.start(first.id())).desired()).isEqualTo("RUNNING");
+        assertThatThrownBy(() -> as(owner, () -> service.create(newProject().id(), input())))
+                .isInstanceOf(ConflictException.class).hasMessageContaining("3");
+        assertThat(as(owner, () -> service.list(null))).extracting(Workspace::id)
+                .containsExactlyInAnyOrder(first.id(), second.id(), kept.id());
+    }
+    Project newProject() {
+        return as(owner, () -> projects.create(new ProjectRequest("Remote", "", "https://github.com/example/repository", "", List.of())));
+    }
     @Test void retainedStoppedWorkspacesCannotStarveNewLifecycleOperations() {
+        int limit = settings.maxPerUser;
+        settings.maxPerUser = 1000;
+        try { retainMany(); } finally { settings.maxPerUser = limit; }
+    }
+    private void retainMany() {
         for (int i = 0; i < 101; i++) {
             var oldProject = as(owner, () -> projects.create(new ProjectRequest("Retained", "",
                     "https://github.com/example/repository", "", List.of())));

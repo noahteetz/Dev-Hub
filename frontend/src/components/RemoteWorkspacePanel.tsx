@@ -6,13 +6,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useOptionalAuth } from '../auth/useOptionalAuth'
-import type { AiProfile, Project, RemoteWorkspace, WorkspaceGitReport, WorkspaceResources, WorkspaceTerminal } from '../types'
+import type { AiProfile, Project, RemoteWorkspace, WorkspaceConfig, WorkspaceGitReport, WorkspaceResources, WorkspaceTerminal } from '../types'
 import { TerminalPane } from './TerminalPane'
 
 function message(error: unknown) { return error instanceof Error ? error.message : 'Workspace operation failed' }
 export function RemoteWorkspacePanel({ project }: { project: Project }) {
   const auth = useOptionalAuth()
-  const [config, setConfig] = useState<{ enabled: boolean; allowed: boolean } | null>(null)
+  const [config, setConfig] = useState<WorkspaceConfig | null>(null)
   const [workspace, setWorkspace] = useState<RemoteWorkspace | null>(null)
   const [profiles, setProfiles] = useState<AiProfile[]>([])
   const [terminals, setTerminals] = useState<WorkspaceTerminal[]>([])
@@ -73,7 +73,10 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
   return (
     <Paper component="section" variant="outlined" sx={{ p: 2.5, mt: 2 }}>
       <Stack spacing={2}>
-        <Typography variant="h6">Remote workspace</Typography>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <Typography variant="h6">Remote workspace</Typography>
+          {config?.enabled && config.allowed ? <Typography variant="body2"><Link to="/workspaces">All workspaces</Link></Typography> : null}
+        </Stack>
         {error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}
         {!config ? <Typography>Loading workspace availability…</Typography> : !config.enabled
           ? <Alert severity="info">Remote workspaces are not available on this instance.</Alert>

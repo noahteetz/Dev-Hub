@@ -15,7 +15,7 @@ Die Profile setzen das Datenlayout der Roadmap als eigene Docker-Volumes um; ein
 
 ## Aktivieren
 
-1. CPU/RAM, freien Docker-Speicher und laufende App-Dienste prüfen. Standard: höchstens zwei aktive Workspaces insgesamt, einer pro Nutzer, je zwei CPU und 4 GiB RAM. Diese Werte an den vorhandenen Server anpassen.
+1. CPU/RAM, freien Docker-Speicher und laufende App-Dienste prüfen. Standard: höchstens zwei aktive Workspaces insgesamt (WORKSPACE_MAX_RUNNING), pro Nutzer zwei gleichzeitig laufende (WORKSPACE_MAX_RUNNING_PER_USER) und drei aufbewahrte, laufend oder gestoppt (WORKSPACE_MAX_PER_USER), je zwei CPU und 4 GiB RAM. Bei mehreren Nutzern WORKSPACE_MAX_RUNNING entsprechend erhöhen. Diese Werte an den vorhandenen Server anpassen.
 2. Eigenen zufälligen Schlüssel erzeugen: openssl rand -hex 32. Als DEVHUB_RUNNER_TOKEN in der lokalen beziehungsweise produktiven .env speichern. Dieselbe Variable geht an Backend und Runner. .env und Backups gehören nur den zuständigen Serveradministratoren.
 3. DEVHUB_WORKSPACE_ENABLED=true und COMPOSE_PROFILES=workspaces setzen. Die übrigen Einstellungen stehen in deploy/.env.example. Ohne aktives Compose-Profil starten keine Runner-/Workspace-Dienste.
 4. Im bereits bestehenden Keycloak-Realm dev-hub die Realm-Rolle devhub-workspace anlegen und ausgewählten Nutzern zusätzlich zu devhub-user zuweisen. Das aktualisierte Import-JSON ist für frische Realms; bestehende Realms werden dadurch nicht automatisch geändert. Danach Token erneuern beziehungsweise neu anmelden.
@@ -28,7 +28,7 @@ Die Produktions-Compose-Datei bleibt im bestehenden Deploymentpfad. Der Runner b
 
 ## Verhalten und Grenzen
 
-- Owner/Editor mit Workspace-Realmrolle starten ihre eigene Umgebung. Viewer starten keine Terminals. Projektowner erhalten keinen Zugriff auf fremde Workspaces oder KI-Profile.
+- Owner/Editor mit Workspace-Realmrolle starten ihre eigene Umgebung, pro Projekt eine. Die Seite Workspaces in der Seitenleiste zeigt alle eigenen Workspaces projektübergreifend; dort lassen sich Terminals anpinnen, in einem Raster mit ein bis drei Spalten anordnen und einzeln maximieren. Viewer starten keine Terminals. Projektowner erhalten keinen Zugriff auf fremde Workspaces oder KI-Profile.
 - Browser schließen beziehungsweise Panel ausblenden trennt nur die Verbindung. tmux erhält Shells und Prozesse im laufenden Container; Reconnect benötigt ein neues Ticket.
 - Terminalzugriff wird mit frischem JWT erneuert; bei Tokenablauf oder Entzug der Projektberechtigung wird er gesperrt. Änderungen an Keycloak-Rollen wirken spätestens mit dem Ablauf des bisherigen Tokens (derzeit fünf Minuten). Projektentzug stoppt Compute über die nächste Lifecycle-Prüfung.
 - Stoppen beendet Prozesse und hält Repo/Home-Volumes vor. Fortsetzen erstellt einen Container mit denselben Dateien. Die vorherigen Prozesse und tmux-Sitzungen werden dabei nicht fortgesetzt.

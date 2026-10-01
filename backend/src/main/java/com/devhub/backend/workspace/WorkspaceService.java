@@ -29,10 +29,12 @@ public class WorkspaceService {
     private final RepositoryUrlParser urls;
     private final WorkspaceRunner runner;
     private final GitCredentialService credentials;
+    private final WorkspaceSettings settings;
     public WorkspaceService(WorkspaceRepository repository, WorkspaceAccess access, CurrentUser user,
-            ProjectService projects, RepositoryUrlParser urls, WorkspaceRunner runner, GitCredentialService credentials) {
+            ProjectService projects, RepositoryUrlParser urls, WorkspaceRunner runner, GitCredentialService credentials,
+            WorkspaceSettings settings) {
         this.repository = repository; this.access = access; this.user = user; this.projects = projects;
-        this.urls = urls; this.runner = runner; this.credentials = credentials;
+        this.urls = urls; this.runner = runner; this.credentials = credentials; this.settings = settings;
     }
     public List<Workspace> list(Long projectId) {
         access.feature();
@@ -67,8 +69,10 @@ public class WorkspaceService {
         String email = text(body.commitEmail(), 200, "Commit email");
         if (!email.matches("[^\\s<>@]+@[^\\s<>@]+")) throw new InvalidRequestException("Enter a valid commit email");
         repository.lockUser(user.id());
-        if (repository.hasRunning(user.id(), "")) throw new ConflictException("Stop your active workspace before starting another");
         if (!repository.list(user.id(), projectId).isEmpty()) throw new ConflictException("Resume or delete your existing workspace for this project");
+        if (repository.list(user.id(), null).size() >= settings.maxPerUser)
+            throw new ConflictException("You can keep at most " + settings.maxPerUser + " workspaces; delete one before creating another");
+        requireRunningSlot(user.id(), "");
         String id = UUID.randomUUID().toString();
         var now = Instant.now();
         repository.insert(new Workspace(id, projectId, user.id(), url, branch, body.newBranch(), name, email,
@@ -81,7 +85,7 @@ public class WorkspaceService {
         if (projects.findById(w.projectId()).status() == ProjectStatus.ARCHIVED) throw new ConflictException("Restore the project first");
         if (w.desired().equals("RUNNING") && !w.status().equals("ERROR")) return get(id);
         if (!List.of("STOPPED", "ERROR").contains(w.status())) throw new ConflictException("Wait for the current workspace operation");
-        if (repository.hasRunning(w.ownerId(), w.id())) throw new ConflictException("Stop your other active workspace first");
+        requireRunningSlot(w.ownerId(), w.id());
         repository.renew(id, access.expiresAt()); repository.desired(id, "RUNNING");
         return repository.find(id).orElseThrow();
     }
@@ -171,6 +175,10 @@ public class WorkspaceService {
         return user.runAs(w.ownerId(), () -> credentials.credentialFor(provider)
                 .map(c -> new Credential(provider == RepositoryProvider.GITHUB ? "x-access-token" : "oauth2", c.token()))
                 .orElse(new Credential("", "")));
+    }
+    private void requireRunningSlot(long owner, String except) {
+        if (repository.countRunning(owner, except) >= settings.maxRunningPerUser)
+            throw new ConflictException("At most " + settings.maxRunningPerUser + " of your workspaces can run at once; stop one first");
     }
     static String uuid(String id) {
         try { if (!UUID.fromString(id).toString().equals(id)) throw new IllegalArgumentException(); return id; }
