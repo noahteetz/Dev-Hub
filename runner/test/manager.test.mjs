@@ -107,3 +107,12 @@ test('maintenance reattaches a recreated egress proxy without skipping runtime l
   await manager.maintain();
   assert.equal((await manager.read(id)).reason, 'Maximum runtime reached');
 });
+test('one owner may run several workspaces up to the per-owner limit', async () => {
+  const ids = ['11111111-2222-3333-4444-555555555555', '11111111-2222-3333-4444-555555555556'];
+  const manager = new Manager({docker: {inspect: async () => ({State: {Running: true}})}, token: 'test', maxRunningPerOwner: 2});
+  manager.maxRunning = 16;
+  manager.read = async () => null;
+  manager.all = async () => ids.map(id => ({id, ownerId: 1}));
+  await assert.rejects(manager.start({id: '11111111-2222-3333-4444-555555555557', generation: 1, ownerId: 1,
+    repositoryUrl: 'https://github.com/a/b', branch: 'work/test', commitName: 'Test', commitEmail: 'test@example.com'}), /Owner active workspace limit/);
+});

@@ -146,6 +146,8 @@ An open browser tab picks the new data up when it comes back into focus, at most
 
 Remote workspaces run in the existing Docker environment and are opt-in. In a project, open **Remote workspace** to create a personal checkout on an existing or new branch. OWNER and EDITOR project access plus the Keycloak realm role devhub-workspace are required.
 
+Each user can keep three workspaces (one per project) and run two of them at once (`WORKSPACE_MAX_PER_USER`, `WORKSPACE_MAX_RUNNING_PER_USER`). **Workspaces** in the sidebar lists all of them across projects: resume or stop them there, pin terminals into a grid of one to three columns, drag to reorder and maximize a single terminal.
+
 **Stop** ends compute and keeps files; **Resume** starts another container with those files. **Delete checkout** verifies Git again after stopping all writers. Uncommitted/untracked/ignored files, stashes, unpushed branches, detached commits and unknown Git state block normal deletion. Discarding requires the exact workspace ID. Personal Claude/Codex profiles survive checkout deletion and can be managed separately in Settings.
 
 A profile terminal opens a shell with that account's configuration. Run claude and /login, or codex login --device-auth followed by codex. Git commit and push run in the terminal with your own Git token; project sharing does not grant upstream Git access.

@@ -16,7 +16,7 @@ public final class WorkspaceModels {
     public record TerminalInput(String provider, String profileId) {}
     public record DeleteInput(boolean discard, String confirmation) {}
     public record Ticket(String ticket, Instant expiresAt) {}
-    public record Config(boolean enabled, boolean allowed) {}
+    public record Config(boolean enabled, boolean allowed, int maxRunning, int maxWorkspaces) {}
     public record RunnerStart(String id, long ownerId, String repositoryUrl, String branch,
             boolean newBranch, String commitName, String commitEmail, long generation) {}
     public record RunnerAction(long generation, boolean discard, String confirmation) {}

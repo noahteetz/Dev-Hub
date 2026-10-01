@@ -39,9 +39,10 @@ public class WorkspaceRepository {
                 """, w.id(), w.projectId(), w.ownerId(), w.ownerId() + ":" + w.projectId(), w.repositoryUrl(),
                 w.branch(), w.newBranch(), w.commitName(), w.commitEmail(), Timestamp.from(w.authorizedUntil()));
     }
-    public boolean hasRunning(long owner, String except) {
+    public boolean hasRunning(long owner, String except) { return countRunning(owner, except) > 0; }
+    public long countRunning(long owner, String except) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM workspaces WHERE owner_id = ? AND id <> ? AND desired = 'RUNNING'",
-                Long.class, owner, except) > 0;
+                Long.class, owner, except);
     }
     public void renew(String id, Instant until) {
         jdbc.update("UPDATE workspaces SET authorized_until = ? WHERE id = ?", Timestamp.from(until), id);

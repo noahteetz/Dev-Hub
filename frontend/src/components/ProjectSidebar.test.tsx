@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { ProjectSidebar } from './ProjectSidebar'
@@ -58,5 +58,35 @@ describe('ProjectSidebar', () => {
     expect(screen.getByText('Shared by Alice - Editor')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit Own project' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Shared one' })).not.toBeInTheDocument()
+  })
+
+  it('collapses to icons, remembers that and offers the workspace overview', () => {
+    localStorage.clear()
+    const sidebar = () => render(<MemoryRouter>
+      <ProjectSidebar
+        apiState="ready"
+        archivedProjectCount={0}
+        dashboardView="active"
+        projects={[projectFixture({ id: 1, name: 'Own project' })]}
+        selectedProjectId={null}
+        workspacesAvailable
+        onArchiveProject={vi.fn()}
+        onCreateProject={vi.fn()}
+        onEditProject={vi.fn()}
+        onRetry={vi.fn()}
+        onSelectProject={vi.fn()}
+        onShowDashboard={vi.fn()}
+      />
+    </MemoryRouter>)
+    const { unmount } = sidebar()
+    expect(screen.getByText('Workspaces')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: 'Own project' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Own project' })).not.toBeInTheDocument()
+    unmount()
+    sidebar()
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
+    localStorage.clear()
   })
 })

@@ -5,6 +5,7 @@ import type {
   WorkspaceGitReport,
   WorkspaceResources,
   WorkspaceCreate,
+  WorkspaceConfig,
   CodeSnippet,
   CodeSnippetInput,
   GitCredential,
@@ -163,7 +164,7 @@ function queryString(params: ContentListParams | Record<string, unknown> = {}) {
 
 export const api = {
   workspaces: {
-    config: () => request<{ enabled: boolean; allowed: boolean }>('/api/workspaces/config'),
+    config: () => request<WorkspaceConfig>('/api/workspaces/config'),
     list: (projectId: number) => request<RemoteWorkspace[]>('/api/projects/' + projectId + '/workspaces'),
     mine: () => request<RemoteWorkspace[]>('/api/workspaces'),
     get: (id: string) => request<RemoteWorkspace>('/api/workspaces/' + id),
