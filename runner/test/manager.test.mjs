@@ -82,6 +82,31 @@ test('global admission bounds concurrent workspaces across different users', asy
   await assert.rejects(manager.start({id: '11111111-2222-3333-4444-555555555557', generation: 1, ownerId: 1,
     repositoryUrl: 'https://github.com/a/b', branch: 'work/test', commitName: 'Test', commitEmail: 'test@example.com'}), /active workspace limit/);
 });
+test('maintenance reattaches a recreated egress proxy without skipping runtime limits', async t => {
+  const fs = await import('node:fs/promises'), os = await import('node:os'), path = await import('node:path');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'devhub-egress-'));
+  t.after(() => fs.rm(directory, {recursive: true, force: true}));
+  const id = '11111111-2222-3333-4444-555555555555', connected = [];
+  let proxyRunning = true;
+  const docker = {
+    inspect: async name => name === 'dev-hub-workspace-egress' ? {Id: 'proxy-new', State: {Running: proxyRunning}} : {Id: 'workspace', State: {Running: true}},
+    exec: async () => ({code: 1, output: ''}), remove: async () => {},
+    request: async (method, url, body) => {
+      if (method === 'GET' && url === '/networks/devhub-net-' + id) return {Containers: {'proxy-old': {}, workspace: {}}};
+      if (method === 'POST' && url.endsWith('/connect')) connected.push(body);
+      return {};
+    }};
+  const manager = new Manager({docker, data: directory, brokersRoot: path.join(directory, 'brokers'), token: 'test'});
+  const now = new Date().toISOString();
+  await manager.write({id, ownerId: 1, generation: 1, status: 'RUNNING', startedAt: now, lastActivityAt: now, terminals: []});
+  await manager.maintain();
+  assert.deepEqual(connected, [{Container: 'proxy-new', EndpointConfig: {Aliases: ['egress']}}]);
+  assert.equal((await manager.read(id)).status, 'RUNNING');
+  proxyRunning = false;
+  await manager.write({...(await manager.read(id)), startedAt: new Date(Date.now() - 15000 * 1000).toISOString()});
+  await manager.maintain();
+  assert.equal((await manager.read(id)).reason, 'Maximum runtime reached');
+});
 test('one owner may run several workspaces up to the per-owner limit', async () => {
   const ids = ['11111111-2222-3333-4444-555555555555', '11111111-2222-3333-4444-555555555556'];
   const manager = new Manager({docker: {inspect: async () => ({State: {Running: true}})}, token: 'test', maxRunningPerOwner: 2});

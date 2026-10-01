@@ -431,7 +431,10 @@ export class Manager {
         if (current.status !== 'RUNNING') return;
         const container = await this.docker.inspect(this.name(meta.id));
         if (!container?.State.Running) { await this.stopRuntime(current); return; }
-        const disk = await this.docker.exec(container.Id, ['du', '-sb', '/workspace', '/home/workspace'], {workingDir: '/workspace'});
+        // A deploy can recreate the egress proxy, and the new container joins no
+        // existing workspace network. A missing proxy must not skip the limits below.
+        await this.ensureNetwork(meta.id).catch(() => {});
+        const disk =await this.docker.exec(container.Id, ['du', '-sb', '/workspace', '/home/workspace'], {workingDir: '/workspace'});
         if (disk.code === 0) current.diskBytes = disk.output.trim().split('\n').reduce((sum, line) => sum + (Number(line.split(/\s+/)[0]) || 0), 0);
         let active = [...this.connections.keys()].some(k => k.startsWith(meta.id + ':'));
         // A tmux pane normally has tmux + one shell/CLI process; descendants indicate ongoing work.
