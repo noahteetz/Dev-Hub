@@ -21,8 +21,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o 
        > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh=${GH_VERSION} \
     && rm -rf /var/lib/apt/lists/*
-ARG CLAUDE_VERSION=2.1.285
-ARG CODEX_VERSION=0.159.2
+ARG CLAUDE_VERSION=2.1.292
+ARG CODEX_VERSION=0.160.1
 RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
