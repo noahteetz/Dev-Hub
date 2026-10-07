@@ -47,7 +47,7 @@ export class Manager {
     this.cpu = number(process.env.WORKSPACE_CPUS, 2, 0.25, 16);
     this.memory = number(process.env.WORKSPACE_MEMORY_BYTES, 4294967296, 536870912, 34359738368);
     this.pids = number(process.env.WORKSPACE_PIDS, 1024, 64, 32768);
-    this.diskBudget = number(process.env.WORKSPACE_DISK_BYTES, 5368709120, 104857600, 107374182400);
+    this.diskBudget = number(process.env.WORKSPACE_DISK_BYTES, 21474836480, 104857600, 107374182400);
     this.minFree = number(process.env.RUNNER_MIN_FREE_BYTES, 10737418240, 0, 107374182400);
     this.maxRuntime = number(process.env.WORKSPACE_MAX_RUNTIME_SECONDS, 14400, 60, 86400);
     this.idle = number(process.env.WORKSPACE_IDLE_SECONDS, 1800, 60, 86400);
@@ -222,7 +222,7 @@ export class Manager {
       const disk = await fs.statfs(this.data);
       if (Number(disk.bavail) * Number(disk.bsize) < this.minFree) throw new Error('Runner free space below reserve');
       const meta = {...previous, ...input, initialized: previous?.initialized || false,
-        status: 'PROVISIONING', reason: '', startedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString(), terminals: previous?.terminals || []};
+        status: 'PROVISIONING', reason: '', diskAtStart: null, startedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString(), terminals: previous?.terminals || []};
       await this.write(meta);
       await this.initVolumes(meta);
       await this.broker(meta);
@@ -254,6 +254,8 @@ export class Manager {
         meta = {id, generation, status: 'STOPPED', initialized: false, terminals: []};
         await this.write(meta);
       }
+      // Keep the reason of an automatic stop for the backend; a stop of a live workspace was requested.
+      if (meta.status !== 'STOPPED') meta.reason = '';
       meta.generation = generation; await this.write(meta);
       await this.stopRuntime(meta); return this.inspect(id);
     });
@@ -432,12 +434,21 @@ export class Manager {
         const current = await this.read(meta.id);
         if (current.status !== 'RUNNING') return;
         const container = await this.docker.inspect(this.name(meta.id));
-        if (!container?.State.Running) { await this.stopRuntime(current); return; }
+        if (!container?.State.Running) {
+          current.reason = !container ? 'Workspace container disappeared'
+            : container.State.OOMKilled ? 'Workspace ran out of memory' : 'Workspace container exited with code ' + container.State.ExitCode;
+          await this.stopRuntime(current); return;
+        }
         // A deploy can recreate the egress proxy, and the new container joins no
         // existing workspace network. A missing proxy must not skip the limits below.
         await this.ensureNetwork(meta.id).catch(() => {});
-        const disk =await this.docker.exec(container.Id, ['du', '-sb', '/workspace', '/home/workspace'], {workingDir: '/workspace'});
+        const disk = await this.docker.exec(container.Id, ['du', '-sb', '/workspace', '/home/workspace'], {workingDir: '/workspace'});
         if (disk.code === 0) current.diskBytes = disk.output.trim().split('\n').reduce((sum, line) => sum + (Number(line.split(/\s+/)[0]) || 0), 0);
+        // A checkout that is already over budget when it starts would otherwise stop within one
+        // maintenance cycle, before anyone can clean it up. It may run with limited extra room.
+        if (disk.code === 0 && current.diskAtStart == null) current.diskAtStart = current.diskBytes;
+        // Until this run has measured its own usage, a figure kept from the previous run proves nothing.
+        const diskLimit = current.diskAtStart == null ? Infinity : Math.max(this.diskBudget, current.diskAtStart + 1073741824);
         let active = [...this.connections.keys()].some(k => k.startsWith(meta.id + ':'));
         // A tmux pane normally has tmux + one shell/CLI process; descendants indicate ongoing work.
         const processes = await this.docker.exec(container.Id, ['ps', '-eo', 'comm='], {workingDir: '/workspace'});
@@ -448,11 +459,17 @@ export class Manager {
         if (this.activity.has(meta.id)) current.lastActivityAt = this.activity.get(meta.id);
         if (active) current.lastActivityAt = new Date().toISOString();
         const now = Date.now();
-        const reason = current.diskBytes > this.diskBudget ? 'Disk budget exceeded'
+        const gib = bytes => (bytes / 1073741824).toFixed(1) + ' GiB';
+        const reason = current.diskBytes > diskLimit
+          ? `Disk budget exceeded (${gib(current.diskBytes)} of ${gib(this.diskBudget)}); remove build output or caches such as ~/.cache, ~/.nuget or node_modules`
           : now - Date.parse(current.startedAt) > this.maxRuntime * 1000 ? 'Maximum runtime reached'
           : now - Date.parse(current.lastActivityAt) > this.idle * 1000 ? 'Idle timeout' : '';
         if (reason) { current.reason = reason; await this.stopRuntime(current); }
-        else await this.write(current);
+        else {
+          current.reason = Number.isFinite(diskLimit) && current.diskBytes > this.diskBudget
+            ? `Over disk budget (${gib(current.diskBytes)} of ${gib(this.diskBudget)}); free space before it grows past ${gib(diskLimit)}` : '';
+          await this.write(current);
+        }
       }).catch(() => {}); // no cleanup on unknown state, preserve data
     }
     // No automatic volume deletion: retained checkouts always require a verified user action.

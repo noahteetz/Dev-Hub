@@ -116,3 +116,31 @@ test('one owner may run several workspaces up to the per-owner limit', async () 
   await assert.rejects(manager.start({id: '11111111-2222-3333-4444-555555555557', generation: 1, ownerId: 1,
     repositoryUrl: 'https://github.com/a/b', branch: 'work/test', commitName: 'Test', commitEmail: 'test@example.com'}), /Owner active workspace limit/);
 });
+test('a checkout already over the disk budget at start keeps running so it can be cleaned up', async t => {
+  const fs = await import('node:fs/promises'), os = await import('node:os'), path = await import('node:path');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'devhub-disk-'));
+  t.after(() => fs.rm(directory, {recursive: true, force: true}));
+  const id = '11111111-2222-3333-4444-555555555555', GiB = 1073741824;
+  let used = 6 * GiB;
+  const docker = {
+    inspect: async () => ({Id: 'workspace', State: {Running: true}}), remove: async () => {},
+    exec: async (_container, command) => command[0] === 'du' ? {code: 0, output: `${used}\t/workspace\n0\t/home/workspace\n`} : {code: 1, output: ''},
+    request: async () => ({})};
+  const manager = new Manager({docker, data: directory, brokersRoot: path.join(directory, 'brokers'), token: 'test'});
+  manager.diskBudget = 5 * GiB;
+  const now = new Date().toISOString();
+  // A value kept from the previous run must not stop the workspace before it is measured again.
+  await manager.write({id, ownerId: 1, generation: 1, status: 'RUNNING', diskBytes: 9 * GiB, diskAtStart: null, startedAt: now, lastActivityAt: now, terminals: []});
+  await manager.maintain();
+  let meta = await manager.read(id);
+  assert.equal(meta.status, 'RUNNING');
+  assert.match(meta.reason, /^Over disk budget \(6\.0 GiB of 5\.0 GiB\)/);
+  used = 4 * GiB;
+  await manager.maintain();
+  assert.equal((await manager.read(id)).reason, '');
+  used = 7.5 * GiB;
+  await manager.maintain();
+  meta = await manager.read(id);
+  assert.equal(meta.status, 'STOPPED');
+  assert.match(meta.reason, /^Disk budget exceeded \(7\.5 GiB of 5\.0 GiB\)/);
+});

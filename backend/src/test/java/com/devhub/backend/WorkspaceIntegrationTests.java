@@ -11,6 +11,7 @@ import com.devhub.backend.security.CurrentUser;
 import com.devhub.backend.service.*;
 import com.devhub.backend.workspace.*;
 import com.devhub.backend.workspace.WorkspaceModels.*;
+import com.devhub.backend.workspace.WorkspaceModels.Runtime;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -121,6 +122,20 @@ class WorkspaceIntegrationTests {
         finally { settings.workerEnabled = false; }
         verify(runner).stop(argThat(value -> value.id().equals(w.id())));
         assertThat(repository.find(w.id()).orElseThrow().status()).isEqualTo("STOPPED");
+    }
+    @Test void automaticRunnerStopShowsItsReason() {
+        var w = running(owner);
+        String reason = "Disk budget exceeded (5.2 GiB of 5.0 GiB); remove build output or caches such as ~/.cache, ~/.nuget or node_modules";
+        when(runner.inspect(w.id())).thenReturn(new Runtime("STOPPED", 0, 0, 0, null, reason));
+        when(runner.stop(argThat(value -> value != null && value.id().equals(w.id())))).thenReturn(new Runtime("STOPPED", 0, 0, 0, null, reason));
+        settings.workerEnabled = true;
+        try { worker.reconcile(); worker.reconcile(); }
+        finally { settings.workerEnabled = false; }
+        var stopped = repository.find(w.id()).orElseThrow();
+        assertThat(stopped.status()).isEqualTo("STOPPED");
+        assertThat(stopped.error()).isEqualTo("Stopped automatically: " + reason);
+        as(owner, () -> service.start(w.id()));
+        assertThat(repository.find(w.id()).orElseThrow().error()).isEmpty();
     }
     @Test void credentialBrokerUsesExecutingUsersTokenAndRejectsExpiredAccess() {
         var w = running(editor);

@@ -36,7 +36,7 @@ public class WorkspaceWorker {
                 if (!repository.claim(w)) continue;
                 switch (w.desired()) {
                     case "RUNNING" -> { runner.start(w); repository.complete(w, "RUNNING", ""); }
-                    case "STOPPED" -> { runner.stop(w); repository.clearTerminals(w.id()); repository.complete(w, "STOPPED", ""); }
+                    case "STOPPED" -> { var runtime = runner.stop(w); repository.clearTerminals(w.id()); repository.complete(w, "STOPPED", notice(runtime)); }
                     case "DELETED" -> {
                         runner.delete(w, repository.discard(w.id()), w.id());
                         repository.clearTerminals(w.id()); repository.complete(w, "DELETED", "");
@@ -48,5 +48,12 @@ public class WorkspaceWorker {
                 repository.complete(w, "ERROR", "Runner operation failed. Files are retained. Check runner health and retry the operation.");
             }
         }
+    }
+    /** The runner keeps the reason of a stop it made on its own (idle, limits, crashed container); otherwise it is empty. */
+    static String notice(WorkspaceModels.Runtime runtime) {
+        String reason = runtime == null || runtime.reason() == null ? "" : runtime.reason().strip();
+        if (reason.isEmpty()) return "";
+        String text = "Stopped automatically: " + reason;
+        return text.length() > 500 ? text.substring(0, 500) : text;
     }
 }
