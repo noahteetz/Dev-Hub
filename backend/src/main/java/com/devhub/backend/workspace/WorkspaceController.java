@@ -38,8 +38,9 @@ public class WorkspaceController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(tickets.issue(service.get(id), service.terminal(id, terminal), access.expiresAt()));
     }
     @GetMapping("/api/workspace-runner/credentials/{id}")
-    public ResponseEntity<Credential> credential(@RequestHeader(value = "X-Runner-Token", required = false) String token, @PathVariable String id) {
+    public ResponseEntity<Credential> credential(@RequestHeader(value = "X-Runner-Token", required = false) String token, @PathVariable String id,
+            @RequestParam(required = false) String repositoryUrl) {
         access.runner(token);
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.runnerCredential(id));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.runnerCredential(id, repositoryUrl));
     }
 }

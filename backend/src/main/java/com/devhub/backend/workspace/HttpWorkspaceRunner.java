@@ -12,15 +12,16 @@ import org.springframework.web.client.RestClient;
 public class HttpWorkspaceRunner implements WorkspaceRunner {
     private final WorkspaceSettings settings;
     public HttpWorkspaceRunner(WorkspaceSettings settings) { this.settings = settings; }
-    private RestClient client() {
+    private RestClient client() { return client(Duration.ofSeconds(120)); }
+    private RestClient client(Duration timeout) {
         var factory = new JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder().version(java.net.http.HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(5)).build());
-        factory.setReadTimeout(Duration.ofSeconds(120));
+        factory.setReadTimeout(timeout);
         return RestClient.builder().baseUrl(settings.runnerUrl).requestFactory(factory)
                 .defaultHeader("X-Runner-Token", settings.runnerToken).build();
     }
     public Runtime start(Workspace w) {
-        return client().post().uri("/workspaces/{id}/start", w.id())
-                .body(new RunnerStart(w.id(), w.ownerId(), w.repositoryUrl(), w.branch(), w.newBranch(), w.commitName(), w.commitEmail(), w.generation()))
+        return client(Duration.ofSeconds(120L * Math.max(1, w.repositories().size()))).post().uri("/workspaces/{id}/start", w.id())
+                .body(new RunnerStart(w.id(), w.ownerId(), w.repositoryUrl(), w.branch(), w.newBranch(), w.commitName(), w.commitEmail(), w.generation(), w.repositories()))
                 .retrieve().body(Runtime.class);
     }
     public Runtime stop(Workspace w) {

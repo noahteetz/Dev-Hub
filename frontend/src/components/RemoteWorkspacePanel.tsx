@@ -83,7 +83,14 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
           : !config.allowed ? <Alert severity="info">Your account needs access to remote workspaces.</Alert>
           : !workspace ? (
             <Stack spacing={2}>
-              <Typography color="text.secondary" variant="body2">Start your own isolated checkout. Commit and push with Git in the terminal. Your Git account must have access to this repository.</Typography>
+              <Typography color="text.secondary" variant="body2">Start your own isolated workspace with all linked repositories. Commit and push with Git in each repository. Your Git account must have access to every private repository.</Typography>
+              {project.additionalRepositoryUrls?.length ? (
+                <Box>
+                  <Typography variant="body2">Main repository: {project.repositoryUrl}</Typography>
+                  {project.additionalRepositoryUrls.map(url => <Typography key={url} variant="body2" sx={{ overflowWrap: 'anywhere' }}>{url}</Typography>)}
+                  <Typography color="text.secondary" variant="body2">The workspace branch applies to the main repository. Additional repositories use their default branch.</Typography>
+                </Box>
+              ) : null}
               <TextField label="Workspace branch" value={branch} onChange={e => setBranch(e.target.value)} />
               <FormControlLabel control={<Checkbox checked={newBranch} onChange={e => setNewBranch(e.target.checked)} />} label="Create branch from the repository default branch" />
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -103,6 +110,14 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                 <Chip label={workspace.status} size="small" />
                 <Typography variant="body2">{workspace.branch}</Typography>
+              </Stack>
+              <Stack spacing={0.5}>
+                {(workspace.repositories ?? [{ repositoryUrl: workspace.repositoryUrl, directory: 'repo' }]).map(checkout => (
+                  <Typography key={checkout.directory} variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                    <Box component="code">/workspace/{checkout.directory}</Box> · {checkout.repositoryUrl}
+                  </Typography>
+                ))}
+                <Typography color="text.secondary" variant="caption">Repository changes in the project apply to new workspaces.</Typography>
               </Stack>
               {workspace.error ? <Alert severity="error">{workspace.error}</Alert> : null}
               <Typography color="text.secondary" variant="body2">Stop ends processes and keeps files. Resume starts a new container. Delete removes the checkout after checking Git; AI profiles remain.</Typography>

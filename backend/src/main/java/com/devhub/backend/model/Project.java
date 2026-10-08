@@ -29,6 +29,7 @@ public record Project(
 		boolean stale,
 		ProjectRole role,
 		String ownerName,
-		boolean shared
+		boolean shared,
+		List<String> additionalRepositoryUrls
 ) {
 }

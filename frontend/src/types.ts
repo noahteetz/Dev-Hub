@@ -28,6 +28,7 @@ export interface Project {
   favorite: boolean
   statusBeforeArchive: ProjectStatus | null
   repositoryUrl: string
+  additionalRepositoryUrls: string[]
   deploymentUrl: string
   progressSummary: string
   nextStep: string
@@ -288,6 +289,7 @@ export interface ProjectInput {
   name: string
   description: string
   repositoryUrl: string
+  additionalRepositoryUrls: string[]
   deploymentUrl: string
   links: ProjectLinkInput[]
 }
@@ -367,6 +369,7 @@ export interface RemoteWorkspace {
   projectId: number
   ownerId: number
   repositoryUrl: string
+  repositories: { repositoryUrl: string; directory: string }[]
   branch: string
   newBranch: boolean
   commitName: string

@@ -18,6 +18,23 @@ export function credentialMatches(repositoryUrl, host, gitPath) {
   return host === target.host && typeof gitPath === 'string'
     && gitPath.replace(/\.git$/, '') === target.pathname.slice(1) && !gitPath.includes('%');
 }
+// Older runner metadata describes only the primary checkout.
+export function checkouts(meta) {
+  const values = meta.repositories ?? [{repositoryUrl: meta.repositoryUrl, directory: 'repo'}];
+  if (!Array.isArray(values) || values.length < 1 || values.length > 10) throw new Error('Invalid checkout list');
+  const directories = new Set(), urls = new Set();
+  for (const checkout of values) {
+    repoUrl(checkout.repositoryUrl);
+    if (typeof checkout.directory !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(checkout.directory)
+        || directories.has(checkout.directory) || urls.has(checkout.repositoryUrl)) throw new Error('Invalid checkout');
+    directories.add(checkout.directory); urls.add(checkout.repositoryUrl);
+  }
+  if (values[0].directory !== 'repo' || values[0].repositoryUrl !== meta.repositoryUrl) throw new Error('Invalid primary checkout');
+  return values.map(({repositoryUrl, directory}) => ({repositoryUrl, directory}));
+}
+export function credentialRepository(meta, host, gitPath) {
+  return checkouts(meta).find(checkout => credentialMatches(checkout.repositoryUrl, host, gitPath))?.repositoryUrl;
+}
 export class Serial {
   constructor() { this.pending = new Map(); }
   run(id, action) {
@@ -106,8 +123,10 @@ export class Manager {
         const chunks = []; let length = 0;
         for await (const chunk of request) { length += chunk.length; if (length > 8192) throw new Error(); chunks.push(chunk); }
         const body = JSON.parse(Buffer.concat(chunks).toString());
-        if (!credentialMatches(meta.repositoryUrl, body.host, body.path)) throw new Error();
-        const result = await fetch(this.backend + '/api/workspace-runner/credentials/' + meta.id, {
+        const repositoryUrl = credentialRepository(meta, body.host, body.path);
+        if (!repositoryUrl) throw new Error();
+        const result = await fetch(this.backend + '/api/workspace-runner/credentials/' + meta.id
+          + '?repositoryUrl=' + encodeURIComponent(repositoryUrl), {
           headers: {'X-Runner-Token': this.token}, signal: AbortSignal.timeout(8000)});
         if (!result.ok) throw new Error();
         const credential = await result.json();
@@ -201,7 +220,7 @@ export class Manager {
     return existing.Id;
   }
   async start(input) {
-    uuid(input.id); repoUrl(input.repositoryUrl);
+    uuid(input.id); const repositories = checkouts(input);
     if (!Number.isSafeInteger(input.ownerId) || input.ownerId < 1 || !Number.isSafeInteger(input.generation) || input.generation < 1)
       throw new Error('Invalid operation');
     if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/.test(input.branch) || /\.\.|\/\/|\/\.|\.lock$|[/.]$/.test(input.branch)) throw new Error('Invalid branch');
@@ -209,7 +228,8 @@ export class Manager {
     return this.startSerial.run('start', () => this.serial.run(input.id, async () => {
       const previous = await this.read(input.id);
       if (previous && (input.generation < previous.generation || previous.status === 'DELETED'
-          || previous.ownerId && previous.ownerId !== input.ownerId || previous.repositoryUrl && previous.repositoryUrl !== input.repositoryUrl))
+          || previous.ownerId && previous.ownerId !== input.ownerId || previous.repositoryUrl && previous.repositoryUrl !== input.repositoryUrl
+          || previous.repositoryUrl && JSON.stringify(checkouts(previous)) !== JSON.stringify(repositories)))
         throw new Error('Stale workspace operation');
       let activeCount = 0, ownerCount = 0;
       for (const other of await this.all()) {
@@ -221,15 +241,21 @@ export class Manager {
       if (activeCount >= this.maxRunning) throw new Error('Runner active workspace limit reached');
       const disk = await fs.statfs(this.data);
       if (Number(disk.bavail) * Number(disk.bsize) < this.minFree) throw new Error('Runner free space below reserve');
-      const meta = {...previous, ...input, initialized: previous?.initialized || false,
+      const meta = {...previous, ...input, repositories, initialized: previous?.initialized || false,
         status: 'PROVISIONING', reason: '', diskAtStart: null, startedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString(), terminals: previous?.terminals || []};
       await this.write(meta);
       await this.initVolumes(meta);
       await this.broker(meta);
       const container = await this.container(meta);
-      const result = await this.docker.exec(container, ['bootstrap.sh', meta.repositoryUrl, meta.branch, String(meta.newBranch),
-        meta.commitName, meta.commitEmail, String(!meta.initialized)], {workingDir: '/workspace'});
-      if (result.code !== 0) { await this.stopRuntime(meta); throw new Error('Repository provisioning failed'); }
+      for (const [index, checkout] of repositories.entries()) {
+        const initialize = !meta.initialized && !(meta.initializedDirectories || []).includes(checkout.directory);
+        const result = await this.docker.exec(container, ['bootstrap.sh', checkout.repositoryUrl,
+          index === 0 ? meta.branch : '', String(index === 0 && meta.newBranch),
+          meta.commitName, meta.commitEmail, String(initialize), checkout.directory], {workingDir: '/workspace'});
+        if (result.code !== 0) { await this.stopRuntime(meta); throw new Error('Repository provisioning failed'); }
+        meta.initializedDirectories = [...new Set([...(meta.initializedDirectories || []), checkout.directory])];
+        await this.write(meta);
+      }
       meta.initialized = true; meta.status = 'RUNNING'; await this.write(meta);
       return this.inspect(meta.id);
     }));
@@ -284,10 +310,23 @@ export class Manager {
     const running = (await this.docker.inspect(this.name(meta.id)))?.State.Running;
     const container = running ? this.name(meta.id) : await this.container(meta, true);
     try {
-      const report = await gitReport(command => this.docker.exec(container, command), meta.repositoryUrl);
-      const scratch = await this.docker.exec(container, ['find', '/workspace', '-mindepth', '1', '-maxdepth', '1', '!', '-name', 'repo', '-print']);
+      const repositories = checkouts(meta);
+      const report = {safe: true, known: true, branch: '', warnings: [], changedFiles: [], unpushedBranches: []};
+      for (const checkout of repositories) {
+        const directory = '/workspace/' + checkout.directory;
+        const exists = await this.docker.exec(container, ['bash', '-c', 'test ! -L "$1" && test -d "$1/.git"', '--', directory], {workingDir: '/workspace'});
+        const current = exists.code === 0
+          ? await gitReport(command => this.docker.exec(container, command, {workingDir: directory}), checkout.repositoryUrl)
+          : {safe: false, known: false, branch: '', warnings: ['Checkout is missing or replaced'], changedFiles: [], unpushedBranches: []};
+        report.safe &&= current.safe; report.known &&= current.known;
+        if (checkout.directory === 'repo') report.branch = current.branch;
+        const prefix = repositories.length > 1 ? checkout.directory + ': ' : '';
+        for (const key of ['warnings', 'changedFiles', 'unpushedBranches']) report[key].push(...current[key].map(value => prefix + value));
+      }
+      const scratch = await this.docker.exec(container, ['find', '/workspace', '-mindepth', '1', '-maxdepth', '1',
+        ...repositories.flatMap(checkout => ['!', '-name', checkout.directory]), '-print'], {workingDir: '/workspace'});
       const home = await this.docker.exec(container, ['find', '/home/workspace', '-mindepth', '1', '-maxdepth', '1',
-        '!', '-name', '.gitconfig', '!', '-name', '.bash_history', '!', '-name', '.bashrc', '!', '-name', '.profile', '!', '-name', '.bash_logout', '-print']);
+        '!', '-name', '.gitconfig', '!', '-name', '.bash_history', '!', '-name', '.bashrc', '!', '-name', '.profile', '!', '-name', '.bash_logout', '-print'], {workingDir: '/workspace'});
       if (scratch.code !== 0 || home.code !== 0) {
         report.safe = false; report.known = false; report.warnings.push('Files outside the checkout could not be checked');
       } else if ((scratch.output + home.output).trim()) {
@@ -336,7 +375,7 @@ export class Manager {
         env.push('-e', (provider === 'claude' ? 'CLAUDE_CONFIG_DIR=' : 'CODEX_HOME=') + '/profiles/' + provider + '/' + input.profileId);
       }
       const result = await this.docker.exec(this.name(id), ['tmux', 'new-session', '-d', '-s', input.id,
-        '-c', '/workspace/repo', ...env, 'bash', '-lc', 'umask 077; ' + command]);
+        '-c', checkouts(meta).length > 1 ? '/workspace' : '/workspace/repo', ...env, 'bash', '-lc', 'umask 077; ' + command]);
       if (result.code !== 0) throw new Error('Terminal start failed');
       meta.terminals = [...(meta.terminals || []), input]; meta.lastActivityAt = new Date().toISOString(); await this.write(meta);
     });

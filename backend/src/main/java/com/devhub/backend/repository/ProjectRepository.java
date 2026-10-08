@@ -211,6 +211,19 @@ public class ProjectRepository {
 		return jdbcTemplate.update("DELETE FROM projects WHERE id = ? AND owner_id = ?", id, currentUser.id());
 	}
 
+	public List<String> additionalRepositories(long projectId) {
+		return jdbcTemplate.queryForList("SELECT repository_url FROM project_repositories WHERE project_id = ? ORDER BY repository_order",
+				String.class, projectId);
+	}
+
+	public void replaceRepositories(long projectId, List<String> urls) {
+		jdbcTemplate.update("DELETE FROM project_repositories WHERE project_id = ?", projectId);
+		for (int i = 0; i < urls.size(); i++) {
+			jdbcTemplate.update("INSERT INTO project_repositories (project_id, repository_order, repository_url) VALUES (?, ?, ?)",
+					projectId, i, urls.get(i));
+		}
+	}
+
 	private void replaceLinks(long projectId, List<ProjectLink> links) {
 		jdbcTemplate.update("DELETE FROM project_links WHERE project_id = ?", projectId);
 		for (ProjectLink link : links) {
@@ -262,7 +275,8 @@ public class ProjectRepository {
 				project.stale(),
 				project.role(),
 				project.ownerName(),
-				project.shared()
+				project.shared(),
+				additionalRepositories(project.id())
 		);
 	}
 
@@ -305,7 +319,8 @@ public class ProjectRepository {
 				effectiveActivityAt.isBefore(Instant.now().minusSeconds(staleProjectDays * 86400L)),
 				role,
 				resultSet.getString("owner_name"),
-				role != ProjectRole.OWNER || resultSet.getBoolean("has_members")
+				role != ProjectRole.OWNER || resultSet.getBoolean("has_members"),
+				List.of()
 		);
 	}
 

@@ -8,7 +8,8 @@ public final class WorkspaceModels {
     public record Workspace(String id, long projectId, long ownerId, String repositoryUrl,
             String branch, boolean newBranch, String commitName, String commitEmail,
             String status, String desired, long generation, String error, Instant authorizedUntil,
-            Instant createdAt, Instant updatedAt) {}
+            Instant createdAt, Instant updatedAt, List<Checkout> repositories) {}
+    public record Checkout(String repositoryUrl, String directory) {}
     public record Profile(String id, String provider, String name, Instant createdAt) {}
     public record Terminal(String id, String workspaceId, String provider, String profileId) {}
     public record Create(String branch, boolean newBranch, String commitName, String commitEmail) {}
@@ -18,7 +19,7 @@ public final class WorkspaceModels {
     public record Ticket(String ticket, Instant expiresAt) {}
     public record Config(boolean enabled, boolean allowed, int maxRunning, int maxWorkspaces) {}
     public record RunnerStart(String id, long ownerId, String repositoryUrl, String branch,
-            boolean newBranch, String commitName, String commitEmail, long generation) {}
+            boolean newBranch, String commitName, String commitEmail, long generation, List<Checkout> repositories) {}
     public record RunnerAction(long generation, boolean discard, String confirmation) {}
     public record RunnerTerminal(String id, long ownerId, String provider, String profileId) {}
     public record Runtime(String status, long memoryBytes, double cpuPercent, long diskBytes,
