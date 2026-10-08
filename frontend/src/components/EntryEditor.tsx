@@ -1,12 +1,5 @@
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded'
-import CheckBoxOutlinedIcon from '@mui/icons-material/CheckBoxOutlined'
-import CodeRoundedIcon from '@mui/icons-material/CodeRounded'
 import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded'
-import FormatBoldRoundedIcon from '@mui/icons-material/FormatBoldRounded'
-import FormatListBulletedRoundedIcon from '@mui/icons-material/FormatListBulletedRounded'
-import InsertLinkRoundedIcon from '@mui/icons-material/InsertLinkRounded'
-import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined'
-import TitleRoundedIcon from '@mui/icons-material/TitleRounded'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import {
   Alert,
@@ -20,13 +13,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   Stack,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
-  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
@@ -36,6 +27,7 @@ import { useNavigate } from 'react-router-dom'
 import { api, ConflictError } from '../api'
 import { EntryReferences } from './EntryReferences'
 import { MarkdownView } from './MarkdownView'
+import { MarkdownEditor } from './MarkdownEditor'
 import { SnippetPickerDialog, type SnippetInsertMode } from './SnippetPickerDialog'
 import type { ContentEntry, ContentType, Project } from '../types'
 import { projectCan } from '../utils/projectPermissions'
@@ -43,8 +35,6 @@ import { projectCan } from '../utils/projectPermissions'
 const AUTOSAVE_DELAY_MS = 1200
 
 type SaveStatus = 'clean' | 'saving' | 'saved' | 'error'
-
-type Format = 'heading' | 'bold' | 'list' | 'checkbox' | 'link' | 'table' | 'code'
 
 interface EntryEditorProps {
   type: ContentType
@@ -69,26 +59,6 @@ function readDraft(type: ContentType, entryId: number): Draft | null {
     return stored ? (JSON.parse(stored) as Draft) : null
   } catch {
     return null
-  }
-}
-
-function formatSelection(format: Format, selected: string) {
-  const lines = selected ? selected.split('\n') : ['']
-  switch (format) {
-    case 'heading':
-      return `## ${selected || 'Heading'}`
-    case 'bold':
-      return `**${selected || 'bold text'}**`
-    case 'list':
-      return lines.map((line) => `- ${line}`).join('\n')
-    case 'checkbox':
-      return lines.map((line) => `- [ ] ${line}`).join('\n')
-    case 'link':
-      return `[${selected || 'label'}](https://)`
-    case 'table':
-      return `\n| Column | Column |\n| --- | --- |\n| ${selected || 'Value'} | Value |\n`
-    case 'code':
-      return `\n\`\`\`\n${selected || 'code'}\n\`\`\`\n`
   }
 }
 
@@ -297,18 +267,6 @@ export function EntryEditor({ type, entryId, projects, onChanged }: EntryEditorP
     }
   }
 
-  function applyFormat(format: Format) {
-    const field = contentRef.current
-    const start = field?.selectionStart ?? content.length
-    const end = field?.selectionEnd ?? start
-    const inserted = formatSelection(format, content.slice(start, end))
-    setContent(`${content.slice(0, start)}${inserted}${content.slice(end)}`)
-    requestAnimationFrame(() => {
-      field?.focus()
-      field?.setSelectionRange(start + inserted.length, start + inserted.length)
-    })
-  }
-
   function insertSnippet(snippet: ContentEntry, mode: SnippetInsertMode) {
     const field = contentRef.current
     const start = field?.selectionStart ?? content.length
@@ -493,29 +451,34 @@ export function EntryEditor({ type, entryId, projects, onChanged }: EntryEditorP
           {showEditor ? (
             <Card sx={{ flex: 1, minWidth: 0, width: '100%' }} variant="outlined">
               <CardContent>
-                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', mb: 1 }}>
-                  <Tooltip title="Heading"><IconButton aria-label="Heading" size="small" onClick={() => applyFormat('heading')}><TitleRoundedIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title="Bold"><IconButton aria-label="Bold" size="small" onClick={() => applyFormat('bold')}><FormatBoldRoundedIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title="List"><IconButton aria-label="List" size="small" onClick={() => applyFormat('list')}><FormatListBulletedRoundedIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title="Checkbox"><IconButton aria-label="Checkbox" size="small" onClick={() => applyFormat('checkbox')}><CheckBoxOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title="Link"><IconButton aria-label="Link" size="small" onClick={() => applyFormat('link')}><InsertLinkRoundedIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title="Table"><IconButton aria-label="Table" size="small" onClick={() => applyFormat('table')}><TableChartOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title="Code block"><IconButton aria-label="Code block" size="small" onClick={() => applyFormat('code')}><CodeRoundedIcon fontSize="small" /></IconButton></Tooltip>
-                  <Divider flexItem orientation="vertical" sx={{ mx: 0.5 }} />
-                  <Button size="small" onClick={() => setPickerOpen(true)}>Insert snippet</Button>
-                  <Button size="small" onClick={() => void createSnippetFromSelection()}>Snippet from selection</Button>
-                </Stack>
-                <TextField
-                  fullWidth
-                  inputRef={contentRef}
-                  label={type === 'SNIPPET' ? 'Code' : 'Markdown'}
-                  minRows={18}
-                  multiline
-                  slotProps={{ input: { sx: { fontFamily: '"ui-monospace", "SFMono-Regular", Consolas, monospace', fontSize: 14 } } }}
-                  value={content}
-                  onBlur={() => void save()}
-                  onChange={(event) => setContent(event.target.value)}
-                />
+                {type === 'SNIPPET' ? (
+                  <TextField
+                    fullWidth
+                    inputRef={contentRef}
+                    label="Code"
+                    minRows={18}
+                    multiline
+                    slotProps={{ input: { sx: { fontFamily: '"ui-monospace", "SFMono-Regular", Consolas, monospace', fontSize: 14 } } }}
+                    value={content}
+                    onBlur={() => void save()}
+                    onChange={(event) => setContent(event.target.value)}
+                  />
+                ) : (
+                  <MarkdownEditor
+                    inputRef={contentRef}
+                    minRows={18}
+                    value={content}
+                    withPreview={false}
+                    onBlur={() => void save()}
+                    onChange={setContent}
+                    toolbarActions={
+                      <>
+                        <Button size="small" onMouseDown={(event) => event.preventDefault()} onClick={() => setPickerOpen(true)}>Insert snippet</Button>
+                        <Button size="small" onMouseDown={(event) => event.preventDefault()} onClick={() => void createSnippetFromSelection()}>Snippet from selection</Button>
+                      </>
+                    }
+                  />
+                )}
               </CardContent>
             </Card>
           ) : null}

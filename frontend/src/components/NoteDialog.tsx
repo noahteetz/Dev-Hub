@@ -11,6 +11,7 @@ import {
   TextField,
 } from '@mui/material'
 import type { Note, NoteInput } from '../types'
+import { MarkdownEditor } from './MarkdownEditor'
 
 interface NoteDialogProps {
   open: boolean
@@ -36,7 +37,7 @@ export function NoteDialog({
   }
 
   return (
-    <Dialog fullWidth maxWidth="sm" open={open} onClose={saving ? undefined : onClose}>
+    <Dialog fullWidth maxWidth="md" open={open} onClose={saving ? undefined : onClose}>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogTitle>{note ? 'Edit note' : 'Add a note'}</DialogTitle>
         <DialogContent dividers>
@@ -49,16 +50,13 @@ export function NoteDialog({
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
-          <TextField
-            fullWidth
+          <MarkdownEditor
             label="Note"
-            margin="normal"
             minRows={7}
-            multiline
             placeholder="Capture an idea, decision, or useful detail..."
             required
             value={content}
-            onChange={(event) => setContent(event.target.value)}
+            onChange={setContent}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>

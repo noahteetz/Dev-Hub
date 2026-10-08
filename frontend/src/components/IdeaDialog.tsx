@@ -12,6 +12,7 @@ import {
   TextField,
 } from '@mui/material'
 import type { Idea, IdeaInput } from '../types'
+import { MarkdownEditor } from './MarkdownEditor'
 
 interface IdeaDialogProps {
   open: boolean
@@ -40,7 +41,7 @@ export function IdeaDialog({
   }
 
   return (
-    <Dialog fullWidth maxWidth="sm" open={open} onClose={saving ? undefined : onClose}>
+    <Dialog fullWidth maxWidth="md" open={open} onClose={saving ? undefined : onClose}>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogTitle>{idea ? 'Edit idea' : 'Capture an idea'}</DialogTitle>
         <DialogContent dividers>
@@ -53,15 +54,12 @@ export function IdeaDialog({
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
-          <TextField
-            fullWidth
+          <MarkdownEditor
             label="Details"
-            margin="normal"
             minRows={6}
-            multiline
             placeholder="What could be useful to build, improve, or explore?"
             value={content}
-            onChange={(event) => setContent(event.target.value)}
+            onChange={setContent}
           />
           <Autocomplete
             freeSolo

@@ -12,6 +12,7 @@ import {
   TextField,
 } from '@mui/material'
 import { useMemo, useState } from 'react'
+import { MarkdownEditor } from './MarkdownEditor'
 import type { CaptureInput, ContentEntry, ContentType } from '../types'
 
 const emptyInput: CaptureInput = {
@@ -62,7 +63,7 @@ export function QuickCaptureDialog({ open, entry = null, saving, error, onClose,
   }
 
   return (
-    <Dialog fullWidth maxWidth="sm" open={open} onClose={saving ? undefined : onClose}>
+    <Dialog fullWidth maxWidth="md" open={open} onClose={saving ? undefined : onClose}>
       <form onSubmit={submit}>
         <DialogTitle>{entry ? 'Edit entry' : 'Quick capture'}</DialogTitle>
         <DialogContent>
@@ -72,7 +73,11 @@ export function QuickCaptureDialog({ open, entry = null, saving, error, onClose,
               <MenuItem value="NOTE">Note</MenuItem><MenuItem value="IDEA">Idea</MenuItem><MenuItem value="SNIPPET">Snippet</MenuItem><MenuItem value="TODO">Todo</MenuItem>
             </TextField>
             <TextField autoFocus required label="Title" value={input.title} onChange={(event) => setInput((current) => ({ ...current, title: event.target.value }))} />
-            <TextField label={input.type === 'SNIPPET' ? 'Code' : 'Content'} minRows={5} multiline value={input.content} onChange={(event) => setInput((current) => ({ ...current, content: event.target.value }))} />
+            {input.type === 'SNIPPET' ? (
+              <TextField label="Code" minRows={7} multiline value={input.content} slotProps={{ input: { sx: { fontFamily: 'monospace' } } }} onChange={(event) => setInput((current) => ({ ...current, content: event.target.value }))} />
+            ) : (
+              <MarkdownEditor label="Content" minRows={7} value={input.content} onChange={(content) => setInput((current) => ({ ...current, content }))} />
+            )}
             {input.type === 'SNIPPET' ? <TextField label="Language" value={input.language} onChange={(event) => setInput((current) => ({ ...current, language: event.target.value }))} /> : null}
             <TextField helperText="Separate tags with commas" label="Tags" value={tagText} onChange={(event) => setTagText(event.target.value)} />
             {input.type === 'NOTE' || input.type === 'IDEA' ? <TextField label="Source URL" value={input.sourceUrl} onChange={(event) => setInput((current) => ({ ...current, sourceUrl: event.target.value }))} /> : null}

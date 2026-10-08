@@ -402,7 +402,7 @@ function IdeaCard({
               <Typography noWrap sx={{ fontWeight: 750 }}>{idea.title}</Typography>
               {idea.converted ? <Chip color="success" label="Converted" size="small" /> : null}
             </Stack>
-            {idea.content ? <Typography color="text.secondary" sx={{ mt: 0.75, whiteSpace: 'pre-wrap' }} variant="body2">{idea.content}</Typography> : null}
+            {idea.content ? <MarkdownView content={idea.content} sx={{ color: 'text.secondary', fontSize: 14, maxHeight: 260, mt: 0.75, overflow: 'hidden' }} /> : null}
             <TagList tags={idea.tags} />
           </Box>
           {readOnly ? null : (
@@ -464,7 +464,7 @@ function TodoCard({
           />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography noWrap sx={{ fontWeight: 750, textDecoration: todo.completed ? 'line-through' : 'none' }}>{todo.title}</Typography>
-            {todo.content ? <Typography color="text.secondary" sx={{ mt: 0.75, whiteSpace: 'pre-wrap' }} variant="body2">{todo.content}</Typography> : null}
+            {todo.content ? <MarkdownView content={todo.content} sx={{ color: 'text.secondary', fontSize: 14, maxHeight: 260, mt: 0.75, overflow: 'hidden' }} /> : null}
             <TagList tags={todo.tags} />
           </Box>
           {readOnly ? null : (

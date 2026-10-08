@@ -12,6 +12,7 @@ import {
   TextField,
 } from '@mui/material'
 import type { Todo, TodoInput } from '../types'
+import { MarkdownEditor } from './MarkdownEditor'
 
 interface TodoDialogProps {
   open: boolean
@@ -40,7 +41,7 @@ export function TodoDialog({
   }
 
   return (
-    <Dialog fullWidth maxWidth="sm" open={open} onClose={saving ? undefined : onClose}>
+    <Dialog fullWidth maxWidth="md" open={open} onClose={saving ? undefined : onClose}>
       <Box component="form" onSubmit={handleSubmit}>
         <DialogTitle>{todo ? 'Edit todo' : 'Add a todo'}</DialogTitle>
         <DialogContent dividers>
@@ -53,15 +54,12 @@ export function TodoDialog({
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
-          <TextField
-            fullWidth
+          <MarkdownEditor
             label="Details"
-            margin="normal"
             minRows={6}
-            multiline
             placeholder="Describe the work that needs doing..."
             value={content}
-            onChange={(event) => setContent(event.target.value)}
+            onChange={setContent}
           />
           <Autocomplete
             freeSolo
