@@ -120,40 +120,78 @@ public class WorkspaceService {
     @Transactional
     public Profile createProfile(ProfileInput input) {
         access.feature();
-        if (input == null || !List.of("CLAUDE", "CODEX").contains(input.provider())) throw new InvalidRequestException("Choose Claude or Codex");
+        if (input == null) throw new InvalidRequestException("Profile settings are required");
+        var providers = providerList(input.providers(), input.provider());
         repository.lockUser(user.id());
         if (repository.profiles(user.id()).size() >= 20) throw new ConflictException("At most 20 AI profiles per user");
         String id = UUID.randomUUID().toString();
-        try { repository.insertProfile(id, user.id(), input.provider(), text(input.name(), 120, "Profile name")); }
+        try { repository.insertProfile(id, user.id(), providers, text(input.name(), 120, "Profile name")); }
+        catch (DataIntegrityViolationException e) { throw new ConflictException("An AI profile with this name already exists"); }
+        return repository.profile(id, user.id());
+    }
+    @Transactional
+    public Profile updateProfile(String id, ProfilePatch input) {
+        access.feature(); repository.lockUser(user.id());
+        var existing = repository.profile(uuid(id), user.id());
+        if (input == null) throw new InvalidRequestException("Profile settings are required");
+        String name = input.name() == null ? existing.name() : text(input.name(), 120, "Profile name");
+        var providers = input.providers() == null ? existing.providers() : providerList(input.providers(), null);
+        var disabled = existing.providers().stream().filter(p -> !providers.contains(p)).toList();
+        for (String provider : disabled) {
+            var terminals = repository.terminalsUsingProvider(id, provider);
+            if (!terminals.isEmpty()) throw new ConflictException("End terminals using " + provider + " before disabling it: " + String.join(", ", terminals));
+        }
+        if (!disabled.isEmpty()) runner.checkProfile(user.id(), id, disabled);
+        try { repository.updateProfile(id, name, providers); }
         catch (DataIntegrityViolationException e) { throw new ConflictException("An AI profile with this name already exists"); }
         return repository.profile(id, user.id());
     }
     @Transactional
     public void deleteProfile(String id) {
         access.feature(); repository.lockUser(user.id());
-        var p = repository.profile(uuid(id), user.id());
+        repository.profile(uuid(id), user.id());
         if (repository.hasRunning(user.id(), "")) throw new ConflictException("Stop your workspaces before deleting login profiles");
         if (repository.profileUsed(id)) throw new ConflictException("Close terminals using this profile before removing it");
-        runner.deleteProfile(user.id(), p.provider(), p.id());
+        runner.deleteProfile(user.id(), id);
         repository.deleteProfile(id, user.id());
+    }
+    private List<String> providerList(List<String> values, String legacy) {
+        if (values == null) values = legacy == null ? List.of() : List.of(legacy);
+        if (values.isEmpty() || values.size() > 2 || values.stream().anyMatch(p -> p == null || !List.of("CLAUDE", "CODEX").contains(p))
+                || values.stream().distinct().count() != values.size()) throw new InvalidRequestException("Choose Claude, Codex or both");
+        if (legacy != null && (values.size() != 1 || !values.contains(legacy))) throw new InvalidRequestException("Conflicting profile providers; reload Dev Hub");
+        return values.stream().sorted().toList();
     }
     public List<Terminal> terminals(String id) { return repository.terminals(own(id).id()); }
     @Transactional
     public Terminal createTerminal(String id, TerminalInput input) {
         var w = own(id); repository.lockUser(w.ownerId());
         if (!w.status().equals("RUNNING") || !w.desired().equals("RUNNING")) throw new ConflictException("Wait until the workspace is running");
-        String provider = input == null ? "SHELL" : input.provider();
-        if (!List.of("SHELL", "CLAUDE", "CODEX").contains(provider)) throw new InvalidRequestException("Choose Shell, Claude or Codex");
-        String profile = null;
-        if (!provider.equals("SHELL")) {
-            var p = repository.profile(uuid(input.profileId()), w.ownerId());
-            if (!p.provider().equals(provider)) throw new InvalidRequestException("Choose a profile of the selected provider");
-            profile = p.id();
-        }
+        String mode = input == null ? "SHELL" : input.launchMode() != null ? input.launchMode() : input.provider();
+        if (!List.of("SHELL", "CLAUDE", "CODEX").contains(mode == null ? "" : mode)) throw new InvalidRequestException("Choose Shell, Claude or Codex");
+        if (input != null && input.launchMode() != null && input.provider() != null && !input.launchMode().equals(input.provider()))
+            throw new InvalidRequestException("Conflicting terminal launch modes");
+        String profile = input == null ? null : input.profileId();
+        List<String> providers = List.of();
+        if (profile != null) {
+            var p = repository.profile(uuid(profile), w.ownerId());
+            providers = p.providers();
+            if (!mode.equals("SHELL") && !providers.contains(mode)) throw new InvalidRequestException("This provider is not enabled on the selected profile");
+        } else if (!mode.equals("SHELL")) throw new InvalidRequestException("Choose a profile for this CLI");
         if (repository.terminals(id).size() >= 8) throw new ConflictException("At most eight terminals per workspace");
-        var t = new Terminal(UUID.randomUUID().toString(), id, provider, profile);
-        runner.terminal(w, t);
+        var t = new Terminal(UUID.randomUUID().toString(), id, mode, profile, providers);
         repository.insertTerminal(t);
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override public void afterCompletion(int status) {
+                        if (status != STATUS_COMMITTED) {
+                            try { runner.closeTerminal(w.id(), t.id()); } catch (Exception ignored) {
+                                // The runner retains its session metadata and blocks profile cleanup/disable until stopped.
+                            }
+                        }
+                    }
+                });
+        runner.terminal(w, t);
         repository.renew(id, access.expiresAt());
         return t;
     }

@@ -1,5 +1,20 @@
+devhub_launch_mode="${DEVHUB_INITIAL_MODE:-SHELL}"
+unset DEVHUB_INITIAL_MODE
 if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc"; fi
 umask 077
 # Per-user toolchains (dotnet-install.sh, Godot, ...) live in the home volume and survive Stop/Resume.
 PATH="$PATH:$HOME/.local/bin:$HOME/.dotnet:$HOME/.dotnet/tools"
 export DOTNET_ROOT="$HOME/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1
+case "$devhub_launch_mode" in
+    CLAUDE)
+        if command -v claude >/dev/null 2>&1; then
+            if claude; then :; else printf 'Claude exited with an error. Your profile shell is ready.\n' >&2; fi
+        else printf 'Claude is unavailable. Your profile shell is ready.\n' >&2; fi
+        ;;
+    CODEX)
+        if command -v codex >/dev/null 2>&1; then
+            if codex; then :; else printf 'Codex exited with an error. Your profile shell is ready.\n' >&2; fi
+        else printf 'Codex is unavailable. Your profile shell is ready.\n' >&2; fi
+        ;;
+esac
+unset devhub_launch_mode

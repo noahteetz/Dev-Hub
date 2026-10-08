@@ -21,10 +21,20 @@ Die Profile setzen das Datenlayout der Roadmap als eigene Docker-Volumes um; ein
 4. Im bereits bestehenden Keycloak-Realm dev-hub die Realm-Rolle devhub-workspace anlegen und ausgewählten Nutzern zusätzlich zu devhub-user zuweisen. Das aktualisierte Import-JSON ist für frische Realms; bestehende Realms werden dadurch nicht automatisch geändert. Danach Token erneuern beziehungsweise neu anmelden.
 5. Produktionsimages kommen aus GHCR über den erweiterten Buildworkflow. Lokal: docker compose --profile workspaces up -d --build. Produktion: nach Veröffentlichung der Images docker compose pull und docker compose up -d mit der vorbereiteten .env. Die workspace-image-Hilfsservice sorgt dafür, dass das Arbeitsimage verfügbar ist.
 6. Im Projekt Remote workspace öffnen, Branch und Git-Commitidentität wählen und starten. GitHub und gitlab.com über HTTPS werden unterstützt. Ein Nutzer braucht eigene Repository-Berechtigungen; Projektmitgliedschaft ersetzt diese nicht.
-7. In Settings persönliche Claude-/Codex-Profile anlegen. Beim Terminalstart einen Anbieter und ein eigenes Profil wählen. Es öffnet sich eine Shell mit dessen Konfiguration. Claude: claude starten und /login nutzen. Codex: codex login --device-auth, anschließend codex. Die Anmeldung erfolgt vollständig in der jeweiligen CLI. Ein Profil kann beliebig viele Terminals gleichzeitig bedienen, auch in verschiedenen Workspaces. Mehrere Agenten im selben Workspace arbeiten allerdings im selben Checkout; für parallele Änderungen eigene Branches per git worktree anlegen.
+7. In Settings ein persönliches Profil benennen und Claude, Codex oder beide aktivieren. Beim Terminalstart öffnet „Profilname“ eine Profil-Shell; „Profilname · Claude“ und „Profilname · Codex“ starten die jeweilige CLI direkt. „Shell“ öffnet eine Shell ohne Profil. Die Anmeldung erfolgt vollständig in der jeweiligen CLI (Claude: /login; Codex bei Bedarf: codex login --device-auth in der Profil-Shell). Nach dem Beenden der CLI bleibt die Profil-Shell offen. Ein Profil kann beliebig viele Terminals gleichzeitig bedienen, auch in verschiedenen Workspaces. Mehrere Agenten im selben Workspace arbeiten im selben Checkout; für parallele Änderungen eigene Branches per git worktree anlegen.
 8. WebSocket, Stop/Resume und Löschprüfung auf der tatsächlichen Domain mit zwei Nutzern abnehmen. Der Runner-Port 8090 wird nie öffentlich veröffentlicht.
 
 Die Produktions-Compose-Datei bleibt im bestehenden Deploymentpfad. Der Runner besitzt ein eigenes internes Netzwerk mit dem Backend; er hängt nicht im Traefik-edge- oder Datenbanknetz. Das Broker-Verzeichnis muss auf Host und Runner unter demselben absoluten Pfad /run/dev-hub-brokers liegen. Es wird beim Start angelegt; Login-Daten liegen dort nicht.
+
+## Update auf gemeinsame KI-Profile
+
+Backend, Frontend, Runner und Arbeitsimage gemeinsam aktualisieren. Bestehende Profile behalten IDs, Login-Dateien und Anbieter; gleichnamige Profile erhalten bei Bedarf eindeutige Namen mit Anbieterzusatz. Sie werden nicht automatisch zusammengeführt. Bestehende Terminals bleiben Shells und behalten ihre bisherige Profilbindung.
+
+Laufende Container verwenden ihr bisheriges Arbeitsimage. Der neue Runner verweigert dort neue Terminals mit einem Stop/Resume-Hinweis, bis das Arbeitsimage mit Launcher-Version 2 verfügbar ist und der Workspace fortgesetzt wurde. Reconnect zu bestehenden Terminals startet keine CLI neu. Stop/Resume beendet die bisherigen Prozesse, erhält aber Dateien und Logins.
+
+Die Migration für gemeinsame Profile ist V11. V10 ist für den separaten Multi-Repository-Branch reserviert: Werden beide Features übernommen, V10 vor dem ersten Deployment mit V11 zusammenführen. Eine später ergänzte V10 würde mit Flyways Standardkonfiguration nicht nachträglich angewendet.
+
+Profiländerungen wirken auf neue Terminals. Alle aktivierten Anbieter werden beim Erstellen eines Terminals gebunden, auch bei einer Profil-Shell oder einem einzelnen CLI-Start. Solange ein Terminal einen Anbieter bindet, lässt er sich nicht deaktivieren. Deaktivieren erhält dessen Dateien; explizites Profil-Löschen entfernt beide Anbieterverzeichnisse, auch zuvor deaktivierte.
 
 ## Verhalten und Grenzen
 
@@ -68,8 +78,8 @@ Traefik routet /api direkt zum Backend. nginx und Vite unterstützen WebSocket-U
 
 ## Verifikation
 
-CI baut Backend, Frontend und alle drei Images. Backendtests prüfen Nutzerisolation, Realmrolle, Ticket-Replay/Expiry, Rollenentzug, persönliche Credentials und Lifecycle-Rennen. Frontendtests prüfen Start/Stop, Profile und explizites Verwerfen.
+CI baut Backend, Frontend und alle drei Images. Backendtests prüfen Nutzerisolation, Realmrolle, Ticket-Replay/Expiry, Rollenentzug, persönliche Credentials und Lifecycle-Rennen. Frontendtests prüfen Start/Stop, gemeinsame Profile, Terminalauswahl und explizites Verwerfen. Die Profilmigration wird mit Bestandsdaten und Namenskollisionen geprüft; HTTP-Tests prüfen beide Anbieter, Profiländerungen und das Aufräumen fehlgeschlagener Terminalstarts.
 
-Runner-Tests verwenden echte Git-Repositories einschließlich ungepushter anderer Branches, Stashes, Tags und Offline-Origin. Die Dockerprüfung verifiziert Clone, Limits, Proxy-Isolation, persönliche Profile, PTY-Reconnect, Dateierhalt, Laufzeitende und Löschschutz. Ein zusätzlicher End-to-End-Test verbindet PostgreSQL, den echten Spring-Server, Runner-HTTP und WebSocket/PTY inklusive Ticket-Erneuerung.
+Runner-Tests verwenden echte Git-Repositories einschließlich ungepushter anderer Branches, Stashes, Tags und Offline-Origin. Die Dockerprüfung verifiziert Clone, Limits, Proxy-Isolation, persönliche Profile, automatischen CLI-Start mit Testprogrammen, PTY-Reconnect ohne Neustart der CLI, Dateierhalt, Laufzeitende und Löschschutz. Ein zusätzlicher End-to-End-Test verbindet PostgreSQL, den echten Spring-Server, Runner-HTTP und WebSocket/PTY inklusive Ticket-Erneuerung.
 
 Persönliche Claude-/ChatGPT-Anmeldung, private Provider-Pushs und die tatsächliche Traefik-/Keycloak-Konfiguration brauchen ergänzend eine manuelle Serverabnahme. CI enthält keine persönlichen Git- oder KI-Tokens.

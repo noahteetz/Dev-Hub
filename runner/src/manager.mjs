@@ -18,6 +18,23 @@ export function credentialMatches(repositoryUrl, host, gitPath) {
   return host === target.host && typeof gitPath === 'string'
     && gitPath.replace(/\.git$/, '') === target.pathname.slice(1) && !gitPath.includes('%');
 }
+export class WorkspaceUpgradeRequired extends Error {}
+export function terminalSettings(input, legacySession = false) {
+  const mode = legacySession && input.launchMode === undefined ? 'SHELL' : input.launchMode ?? input.provider;
+  const providers = input.providers ?? (input.profileId && input.provider !== 'SHELL' ? [input.provider] : []);
+  if (!['SHELL', 'CLAUDE', 'CODEX'].includes(mode) || !Array.isArray(providers) || providers.length > 2
+      || providers.some(p => !['CLAUDE', 'CODEX'].includes(p)) || new Set(providers).size !== providers.length)
+    throw new Error('Invalid terminal settings');
+  if (!legacySession && input.launchMode && input.provider && input.launchMode !== input.provider) throw new Error('Conflicting modes');
+  if (input.profileId) { uuid(input.profileId); if (!providers.length) throw new Error('Missing profile providers'); }
+  else if (mode !== 'SHELL' || providers.length) throw new Error('Missing profile');
+  if (mode !== 'SHELL' && !providers.includes(mode)) throw new Error('Provider unavailable');
+  return {...input, launchMode: mode, provider: mode, providers: [...providers].sort(), profileId: input.profileId ?? null};
+}
+function normalizeMeta(meta) {
+  if (meta?.terminals) meta.terminals = meta.terminals.map(t => terminalSettings(t, true));
+  return meta;
+}
 export class Serial {
   constructor() { this.pending = new Map(); }
   run(id, action) {
@@ -44,6 +61,7 @@ export class Manager {
     this.maxRunning = number(process.env.WORKSPACE_MAX_RUNNING, 2, 1, 16);
     this.maxRunningPerOwner = number(options.maxRunningPerOwner ?? process.env.WORKSPACE_MAX_RUNNING_PER_USER, 2, 1, 16);
     this.startSerial = new Serial();
+    this.ownerSerial = new Serial();
     this.cpu = number(process.env.WORKSPACE_CPUS, 2, 0.25, 16);
     this.memory = number(process.env.WORKSPACE_MEMORY_BYTES, 4294967296, 536870912, 34359738368);
     this.pids = number(process.env.WORKSPACE_PIDS, 1024, 64, 32768);
@@ -70,13 +88,13 @@ export class Manager {
     const entries = await fs.readdir(this.data);
     const values = [];
     for (const entry of entries.filter(e => e.endsWith('.json'))) {
-      try { values.push(JSON.parse(await fs.readFile(path.join(this.data, entry), 'utf8'))); } catch {}
+      try { values.push(normalizeMeta(JSON.parse(await fs.readFile(path.join(this.data, entry), 'utf8')))); } catch { throw new Error('Workspace metadata unavailable'); }
     }
     return values;
   }
   async read(id) {
     uuid(id);
-    try { return JSON.parse(await fs.readFile(path.join(this.data, id + '.json'), 'utf8')); }
+    try { return normalizeMeta(JSON.parse(await fs.readFile(path.join(this.data, id + '.json'), 'utf8'))); }
     catch (e) { if (e.code === 'ENOENT') return null; throw e; }
   }
   async write(meta) {
@@ -206,7 +224,7 @@ export class Manager {
       throw new Error('Invalid operation');
     if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/.test(input.branch) || /\.\.|\/\/|\/\.|\.lock$|[/.]$/.test(input.branch)) throw new Error('Invalid branch');
     for (const field of [input.commitName, input.commitEmail]) if (typeof field !== 'string' || !field || field.length > 255 || /[\x00-\x1f\x7f]/.test(field)) throw new Error('Invalid Git identity');
-    return this.startSerial.run('start', () => this.serial.run(input.id, async () => {
+    return this.startSerial.run('start', () => this.ownerSerial.run(input.ownerId, () => this.serial.run(input.id, async () => {
       const previous = await this.read(input.id);
       if (previous && (input.generation < previous.generation || previous.status === 'DELETED'
           || previous.ownerId && previous.ownerId !== input.ownerId || previous.repositoryUrl && previous.repositoryUrl !== input.repositoryUrl))
@@ -232,7 +250,7 @@ export class Manager {
       if (result.code !== 0) { await this.stopRuntime(meta); throw new Error('Repository provisioning failed'); }
       meta.initialized = true; meta.status = 'RUNNING'; await this.write(meta);
       return this.inspect(meta.id);
-    }));
+    })));
   }
   async stopRuntime(meta) {
     this.activity.delete(meta.id);
@@ -317,37 +335,50 @@ export class Manager {
     });
   }
   async terminal(id, input) {
-    uuid(id); uuid(input.id);
-    return this.serial.run(id, async () => {
+    uuid(id); uuid(input.id); this.profiles(input.ownerId);
+    input = terminalSettings(input);
+    return this.ownerSerial.run(input.ownerId, () => this.serial.run(id, async () => {
       const meta = await this.read(id);
       if (!meta || meta.ownerId !== input.ownerId || meta.status !== 'RUNNING'
           || !(await this.docker.inspect(this.name(id)))?.State.Running) throw new Error('Workspace unavailable');
-      if (!['SHELL', 'CLAUDE', 'CODEX'].includes(input.provider)) throw new Error('Invalid terminal');
-      const existing = meta.terminals?.find(t => t.id === input.id);
-      if (existing) return;
+      if (meta.terminals?.some(t => t.id === input.id)) return;
       if ((meta.terminals || []).length >= 8) throw new Error('Too many terminals');
+      const capability = await this.docker.exec(this.name(id), ['cat', '/usr/local/share/devhub-terminal-version']);
+      if (capability.code !== 0 || capability.output.trim() !== '2') throw new WorkspaceUpgradeRequired();
       const env = [];
-      const command = 'exec profile-shell.sh';
-      if (input.provider !== 'SHELL') {
-        uuid(input.profileId);
-        const provider = input.provider.toLowerCase();
-        const init = await this.docker.exec(this.name(id), ['profile-init.sh', provider, input.profileId]);
+      for (const provider of input.providers) {
+        const key = provider.toLowerCase();
+        const init = await this.docker.exec(this.name(id), ['profile-init.sh', key, input.profileId]);
         if (init.code !== 0) throw new Error('Profile directory unavailable');
-        env.push('-e', (provider === 'claude' ? 'CLAUDE_CONFIG_DIR=' : 'CODEX_HOME=') + '/profiles/' + provider + '/' + input.profileId);
+        env.push('-e', (provider === 'CLAUDE' ? 'CLAUDE_CONFIG_DIR=' : 'CODEX_HOME=') + '/profiles/' + key + '/' + input.profileId);
       }
       const result = await this.docker.exec(this.name(id), ['tmux', 'new-session', '-d', '-s', input.id,
-        '-c', '/workspace/repo', ...env, 'bash', '-lc', 'umask 077; ' + command]);
+        '-c', meta.repositories?.length > 1 ? '/workspace' : '/workspace/repo', ...env,
+        'bash', '-lc', 'umask 077; exec profile-shell.sh ' + input.launchMode]);
       if (result.code !== 0) throw new Error('Terminal start failed');
-      meta.terminals = [...(meta.terminals || []), input]; meta.lastActivityAt = new Date().toISOString(); await this.write(meta);
-    });
+      try {
+        meta.terminals = [...(meta.terminals || []), input]; meta.lastActivityAt = new Date().toISOString(); await this.write(meta);
+      } catch (error) {
+        try {
+          const killed = await this.docker.exec(this.name(id), ['tmux', 'kill-session', '-t', input.id]);
+          if (killed.code !== 0) throw new Error('Terminal cleanup failed');
+        } catch { await this.stopRuntime(meta); }
+        throw error;
+      }
+    }));
   }
   async closeTerminal(id, terminal) {
     uuid(id); uuid(terminal);
     return this.serial.run(id, async () => {
       const meta = await this.read(id); if (!meta) return;
       const connection = this.connections.get(id + ':' + terminal); if (connection) connection.close();
-      if ((await this.docker.inspect(this.name(id)))?.State.Running)
-        await this.docker.exec(this.name(id), ['tmux', 'kill-session', '-t', terminal]);
+      if ((await this.docker.inspect(this.name(id)))?.State.Running) {
+        const killed = await this.docker.exec(this.name(id), ['tmux', 'kill-session', '-t', terminal]);
+        if (killed.code !== 0) {
+          const exists = await this.docker.exec(this.name(id), ['tmux', 'has-session', '-t', terminal]);
+          if (exists.code !== 1) throw new Error('Terminal cleanup failed');
+        }
+      }
       meta.terminals = (meta.terminals || []).filter(t => t.id !== terminal); await this.write(meta);
     });
   }
@@ -410,22 +441,40 @@ export class Manager {
     meta.lastActivityAt = new Date().toISOString(); await this.write(meta);
     });
   }
+  async checkProfile(owner, id, providers) {
+    this.profiles(owner); uuid(id);
+    if (!Array.isArray(providers) || !providers.length || providers.some(p => !['CLAUDE', 'CODEX'].includes(p))) throw new Error('Invalid providers');
+    return this.ownerSerial.run(owner, async () => {
+      for (const meta of await this.all()) {
+        if (meta.ownerId !== owner || !(await this.docker.inspect(this.name(meta.id)))?.State.Running) continue;
+        if (meta.terminals?.some(t => t.profileId === id && t.providers.some(p => providers.includes(p))))
+          throw new Error('Profile is still used by a runner terminal');
+      }
+    });
+  }
   async deleteProfile(owner, provider, id) {
-    if (!['claude', 'codex'].includes(provider)) throw new Error('Invalid provider'); uuid(id);
+    // Keep the legacy provider-specific route; the new route cleans both directories atomically with respect to starts.
+    const providers = id === undefined ? ['claude', 'codex'] : [provider];
+    id ??= provider;
+    if (providers.some(p => !['claude', 'codex'].includes(p))) throw new Error('Invalid provider'); uuid(id);
     const name = this.profiles(owner);
-    for (const meta of await this.all()) if (meta.ownerId === owner && (await this.docker.inspect(this.name(meta.id)))?.State.Running)
-      throw new Error('Stop workspaces before deleting profiles');
-    try { await this.docker.request('GET', '/volumes/' + name); } catch (e) { if (e.status === 404) return; throw e; }
-    const container = await this.docker.request('POST', '/containers/create', {
-      Image: this.image, Cmd: ['sleep', 'infinity'], User: '1000:1000',
-      HostConfig: {NetworkMode: 'none', Mounts: [{Type: 'volume', Source: name, Target: '/profiles'}],
-        ReadonlyRootfs: true, CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges:true'], Memory: 536870912, PidsLimit: 64}});
-    try {
-      await this.docker.request('POST', '/containers/' + container.Id + '/start');
-      const result = await this.docker.exec(container.Id,
-        ['bash', '-c', 'test ! -L "/profiles/$1" && rm -rf -- "/profiles/$1/$2"', 'profile-delete', provider, id], {workingDir: '/profiles'});
-      if (result.code !== 0) throw new Error('Profile cleanup failed');
-    } finally { await this.docker.remove(container.Id); }
+    return this.ownerSerial.run(owner, async () => {
+      for (const meta of await this.all()) if (meta.ownerId === owner && (await this.docker.inspect(this.name(meta.id)))?.State.Running)
+        throw new Error('Stop workspaces before deleting profiles');
+      try { await this.docker.request('GET', '/volumes/' + name); } catch (e) { if (e.status === 404) return; throw e; }
+      const container = await this.docker.request('POST', '/containers/create', {
+        Image: this.image, Cmd: ['sleep', 'infinity'], User: '1000:1000',
+        HostConfig: {NetworkMode: 'none', Mounts: [{Type: 'volume', Source: name, Target: '/profiles'}],
+          ReadonlyRootfs: true, CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges:true'], Memory: 536870912, PidsLimit: 64}});
+      try {
+        await this.docker.request('POST', '/containers/' + container.Id + '/start');
+        for (const key of providers) {
+          const result = await this.docker.exec(container.Id,
+            ['bash', '-c', 'test ! -L "/profiles/$1" && test ! -L "/profiles/$1/$2" && rm -rf -- "/profiles/$1/$2"', 'profile-delete', key, id], {workingDir: '/profiles'});
+          if (result.code !== 0) throw new Error('Profile cleanup failed');
+        }
+      } finally { await this.docker.remove(container.Id); }
+    });
   }
   async maintain() {
     for (const meta of await this.all()) {

@@ -1,15 +1,15 @@
 # Named AI profiles and automatic terminal startup
 
 Date: 2026-10-08. Branch: `concept/unified-ai-profiles`, based on `main` at `af9f1ab`.
-Status: proposed implementation concept. This branch changes documentation only.
+Status: approved and implemented on `feature/unified-ai-profiles`. The concept branch itself changes documentation only. Deployment and migration notes are in [deploy/REMOTE_WORKSPACES.md](deploy/REMOTE_WORKSPACES.md).
 
 ## 1. Intended experience
 
 Create a profile once, give it a name, and choose Claude, Codex, or both. When opening a terminal, choose the profile and the program to start in one menu. Choosing **Work · Claude** opens the terminal directly in Claude; choosing **Work · Codex** does the same for Codex. No initial `claude` or `codex` command needs to be typed.
 
-Proposed interpretation of the plain **Work** entry: open a normal shell with Work's enabled profile configuration available. Keep a separate **Shell** entry for a terminal without a selected profile.
+The plain **Work** entry: open a normal shell with Work's enabled profile configuration available. Keep a separate **Shell** entry for a terminal without a selected profile.
 
-These defaults make the requested behavior concrete; they are product proposals rather than additional confirmed requirements.
+These defaults were adopted with the request to implement this concept.
 
 ## 2. Profile settings
 

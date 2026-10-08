@@ -7,7 +7,7 @@ import { RemoteWorkspacePanel } from './RemoteWorkspacePanel'
 
 const mocks = vi.hoisted(() => ({
   config: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), start: vi.fn(), stop: vi.fn(),
-  resources: vi.fn(), terminals: vi.fn(), deletionCheck: vi.fn(), remove: vi.fn(), profiles: vi.fn(),
+  resources: vi.fn(), terminals: vi.fn(), openTerminal: vi.fn(), deletionCheck: vi.fn(), remove: vi.fn(), profiles: vi.fn(),
 }))
 vi.mock('../api', () => ({ api: { workspaces: mocks, aiProfiles: { list: mocks.profiles } } }))
 vi.mock('./TerminalPane', () => ({ TerminalPane: () => null }))
@@ -37,6 +37,16 @@ describe('remote workspaces', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start workspace' }))
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(1, { branch: 'work/feature', newBranch: true, commitName: 'Noah', commitEmail: 'noah@example.com' }))
     expect(await screen.findByText('PROVISIONING')).toBeInTheDocument()
+  })
+  it('starts the chosen CLI with its named profile', async () => {
+    mocks.list.mockResolvedValue([workspace('RUNNING')]); mocks.get.mockResolvedValue(workspace('RUNNING'))
+    mocks.profiles.mockResolvedValue([{ id: 'work', name: 'Work', providers: ['CLAUDE', 'CODEX'], createdAt: '' }])
+    mocks.openTerminal.mockResolvedValue({ id: 'terminal', workspaceId: id, profileId: 'work', launchMode: 'CLAUDE', providers: ['CLAUDE', 'CODEX'] })
+    view()
+    fireEvent.click(await screen.findByRole('button', { name: 'Open terminal' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Work · Claude' }))
+    await waitFor(() => expect(mocks.openTerminal).toHaveBeenCalledWith(id, 'CLAUDE', 'work'))
+    expect(await screen.findByRole('button', { name: 'Work · Claude' })).toBeInTheDocument()
   })
   it('does not offer execution when the feature or account is unavailable', async () => {
     mocks.config.mockResolvedValue({ enabled: true, allowed: false })

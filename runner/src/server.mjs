@@ -1,7 +1,7 @@
 import http from 'node:http';
 import {timingSafeEqual} from 'node:crypto';
 import {WebSocketServer} from 'ws';
-import {Manager, uuid} from './manager.mjs';
+import {Manager, uuid, WorkspaceUpgradeRequired} from './manager.mjs';
 
 const token = process.env.DEVHUB_RUNNER_TOKEN || '';
 if (token.length < 32) throw new Error('DEVHUB_RUNNER_TOKEN must contain at least 32 characters');
@@ -27,6 +27,13 @@ const server = http.createServer(async (request, response) => {
   if (!authorized(request)) { send(response, 403, {message: 'Runner authentication required'}); return; }
   try {
     const pathname = new URL(request.url, 'http://runner').pathname;
+    const unifiedProfile = pathname.match(/^\/profiles\/([0-9]+)\/([0-9a-f-]+)(?:\/(check))?$/);
+    if (unifiedProfile && request.method === 'DELETE' && !unifiedProfile[3]) {
+      await manager.deleteProfile(Number(unifiedProfile[1]), uuid(unifiedProfile[2])); send(response, 200, {}); return;
+    }
+    if (unifiedProfile && request.method === 'POST' && unifiedProfile[3] === 'check') {
+      await manager.checkProfile(Number(unifiedProfile[1]), uuid(unifiedProfile[2]), (await body(request)).providers); send(response, 200, {}); return;
+    }
     const profile = pathname.match(/^\/profiles\/([0-9]+)\/(claude|codex)\/([0-9a-f-]+)$/);
     if (profile && request.method === 'DELETE') {
       await manager.deleteProfile(Number(profile[1]), profile[2], uuid(profile[3])); send(response, 200, {}); return;
@@ -48,7 +55,10 @@ const server = http.createServer(async (request, response) => {
       case 'terminals': await manager.terminal(id, input); send(response, 200, {}); break;
       default: send(response, 404, {});
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof WorkspaceUpgradeRequired) {
+      send(response, 409, {code: 'WORKSPACE_UPGRADE_REQUIRED', message: 'Stop and resume this workspace to update its terminal launcher'}); return;
+    }
     // Shell output, Git responses and login data never enter HTTP errors or service logs.
     send(response, 409, {message: 'Runner operation failed or was blocked; workspace files were retained'});
   }

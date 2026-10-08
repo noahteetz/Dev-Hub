@@ -30,6 +30,7 @@ RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
        else useradd --uid 1000 --create-home --shell /bin/bash workspace; fi
 COPY bootstrap.sh profile-init.sh profile-shell.sh /usr/local/bin/
 COPY devhub-postgres.sh /usr/local/bin/devhub-postgres
+COPY terminal-launcher-version /usr/local/share/devhub-terminal-version
 COPY devhub-bashrc /usr/local/share/devhub-bashrc
 COPY git-credential.mjs /usr/local/bin/devhub-git-credential
 COPY gh-wrapper.sh /usr/local/bin/gh

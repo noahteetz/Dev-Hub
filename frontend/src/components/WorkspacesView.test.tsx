@@ -20,7 +20,7 @@ function workspace(id: string, projectId: number, status: RemoteWorkspace['statu
     commitName: 'Test', commitEmail: 'test@example.com', status, desired: status === 'RUNNING' ? 'RUNNING' : 'STOPPED',
     generation: 1, error: '', authorizedUntil: '', createdAt: '', updatedAt: '' }
 }
-const shell: WorkspaceTerminal = { id: 't1', workspaceId: 'w1', provider: 'SHELL', profileId: null }
+const shell: WorkspaceTerminal = { id: 't1', workspaceId: 'w1', launchMode: 'SHELL', providers: [], profileId: null }
 
 function view() {
   return render(<MemoryRouter><WorkspacesView projects={[projectFixture({ id: 1, name: 'Alpha' }), projectFixture({ id: 2, name: 'Beta' })]} /></MemoryRouter>)
@@ -50,8 +50,8 @@ describe('workspace overview', () => {
 
   it('pins a terminal into the grid and remembers it', async () => {
     view()
-    fireEvent.click(await screen.findByText('shell 1'))
-    expect(await screen.findByTestId('pane-t1')).toHaveTextContent('Alpha · shell 1')
+    fireEvent.click(await screen.findByText('Shell'))
+    expect(await screen.findByTestId('pane-t1')).toHaveTextContent('Alpha · Shell')
     expect(JSON.parse(localStorage.getItem('devhub.workspaces.grid') ?? '[]')).toEqual(['t1'])
     fireEvent.click(screen.getByRole('button', { name: 'Remove from grid' }))
     expect(screen.queryByTestId('pane-t1')).not.toBeInTheDocument()
@@ -60,7 +60,7 @@ describe('workspace overview', () => {
   it('opens a new terminal straight into the grid', async () => {
     mocks.openTerminal.mockResolvedValue({ ...shell, id: 't2' })
     view()
-    await screen.findByText('shell 1')
+    await screen.findByText('Shell')
     mocks.terminals.mockResolvedValue([shell, { ...shell, id: 't2' }])
     const alpha = await screen.findByRole('region', { name: 'Alpha' })
     fireEvent.click(within(alpha).getByRole('button', { name: 'Terminal' }))
@@ -68,6 +68,19 @@ describe('workspace overview', () => {
     await waitFor(() => expect(mocks.openTerminal).toHaveBeenCalledWith('w1', 'SHELL', null))
     await waitFor(() => expect(JSON.parse(localStorage.getItem('devhub.workspaces.grid') ?? '[]')).toEqual(['t2']))
     expect(await screen.findByTestId('pane-t2')).toBeInTheDocument()
+  })
+
+  it('starts a profile CLI straight into the grid', async () => {
+    const terminal: WorkspaceTerminal = { ...shell, id: 'codex', profileId: 'work', launchMode: 'CODEX', providers: ['CLAUDE', 'CODEX'] }
+    mocks.profiles.mockResolvedValue([{ id: 'work', name: 'Work', providers: ['CLAUDE', 'CODEX'], createdAt: '' }])
+    mocks.openTerminal.mockResolvedValue(terminal)
+    view()
+    const alpha = await screen.findByRole('region', { name: 'Alpha' })
+    mocks.terminals.mockResolvedValue([shell, terminal])
+    fireEvent.click(within(alpha).getByRole('button', { name: 'Terminal' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Work · Codex' }))
+    await waitFor(() => expect(mocks.openTerminal).toHaveBeenCalledWith('w1', 'CODEX', 'work'))
+    expect(await screen.findByTestId('pane-codex')).toHaveTextContent('Alpha · Work · Codex')
   })
 
   it('drops terminals that ended while the page was closed', async () => {

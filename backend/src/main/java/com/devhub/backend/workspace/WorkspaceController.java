@@ -29,6 +29,7 @@ public class WorkspaceController {
     @DeleteMapping("/api/workspaces/{id}") public Workspace delete(@PathVariable String id, @RequestBody(required = false) DeleteInput input) { return service.delete(id, input); }
     @GetMapping("/api/ai-profiles") public List<Profile> profiles() { return service.profiles(); }
     @PostMapping("/api/ai-profiles") public Profile profile(@RequestBody ProfileInput input) { return service.createProfile(input); }
+    @PatchMapping("/api/ai-profiles/{id}") public Profile updateProfile(@PathVariable String id, @RequestBody ProfilePatch input) { return service.updateProfile(id, input); }
     @DeleteMapping("/api/ai-profiles/{id}") public void deleteProfile(@PathVariable String id) { service.deleteProfile(id); }
     @GetMapping("/api/workspaces/{id}/terminals") public List<Terminal> terminals(@PathVariable String id) { return service.terminals(id); }
     @PostMapping("/api/workspaces/{id}/terminals") public Terminal terminal(@PathVariable String id, @RequestBody TerminalInput input) { return service.createTerminal(id, input); }

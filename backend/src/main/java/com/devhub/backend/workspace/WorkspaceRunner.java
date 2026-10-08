@@ -12,6 +12,7 @@ public interface WorkspaceRunner {
     void delete(Workspace workspace, boolean discard, String confirmation);
     void terminal(Workspace workspace, Terminal terminal);
     void closeTerminal(String workspaceId, String terminalId);
-    void deleteProfile(long ownerId, String provider, String profileId);
+    void deleteProfile(long ownerId, String profileId);
+    void checkProfile(long ownerId, String profileId, java.util.List<String> providers);
     URI terminalUri(String workspaceId, String terminalId);
 }

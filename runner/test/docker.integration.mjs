@@ -80,6 +80,27 @@ test('real Docker: clone, private profiles, terminal reconnect, stop/resume, lim
   } finally { await manager.docker.remove(isolated.Id); }
   assert.notEqual((await read('cat', '/profiles/codex/' + otherProfile + '/login.json')).code, 0);
   assert.equal((await read('bash', '-c', 'profile-init.sh codex "$1"; printf saved-login > "/profiles/codex/$1/login.json"; chmod 0600 "/profiles/codex/$1/login.json"', 'test', profile)).code, 0);
+  // Native CLI programs are replaced with deterministic Bash functions; no provider accounts are needed.
+  assert.equal((await read('bash', '-c', `cat >> "$HOME/.bashrc" <<'RC'
+claude() { printf 'CLAUDE_STARTED\\n' >> "$CLAUDE_CONFIG_DIR/ci-starts"; printf 'CLI_READY_CLAUDE\\n'; }
+codex() { printf 'CODEX_STARTED\\n' >> "$CODEX_HOME/ci-starts"; printf 'CLI_READY_CODEX\\n'; }
+RC`)).code, 0);
+  for (const launchMode of ['CLAUDE', 'CODEX']) {
+    const cliTerminal = randomUUID();
+    await manager.terminal(id, {id: cliTerminal, ownerId, launchMode, profileId: profile, providers: ['CLAUDE', 'CODEX']});
+    const cliBrowser = new Browser(); await manager.attach(id, cliTerminal, cliBrowser);
+    await cliBrowser.wait('CLI_READY_' + launchMode);
+    cliBrowser.emit('message', Buffer.from(JSON.stringify({type: 'input', data: `test -d "$CLAUDE_CONFIG_DIR" && test -d "$CODEX_HOME" && printf 'PROFILE_%s\\n' READY\n`})), false);
+    await cliBrowser.wait('PROFILE_READY'); cliBrowser.close();
+    // Retry and reconnect attach to the existing shell rather than starting the CLI again.
+    await manager.terminal(id, {id: cliTerminal, ownerId, launchMode, profileId: profile, providers: ['CLAUDE', 'CODEX']});
+    const again = new Browser(); await manager.attach(id, cliTerminal, again);
+    again.emit('message', Buffer.from(JSON.stringify({type: 'input', data: `printf 'CLI_RECONNECT_%s\\n' OK\n`})), false);
+    await again.wait('CLI_RECONNECT_OK'); again.close();
+    const providerDir = '/profiles/' + launchMode.toLowerCase() + '/' + profile;
+    assert.equal((await read('cat', providerDir + '/ci-starts')).output.trim(), launchMode + '_STARTED');
+    await manager.closeTerminal(id, cliTerminal);
+  }
   const socketRequest = (body) => new Promise((resolve, reject) => {
     const request = http.request({socketPath: path.join(root, 'brokers', id, 'broker.sock'), path: '/credential', method: 'POST'}, response => {
       response.resume(); response.on('end', () => resolve(response.statusCode));
@@ -122,5 +143,5 @@ test('real Docker: clone, private profiles, terminal reconnect, stop/resume, lim
   await manager.delete(id, {generation: 5, discard: true, confirmation: id});
   await assert.rejects(manager.docker.request('GET', '/volumes/' + manager.volume(id)));
   assert.ok(await manager.docker.request('GET', '/volumes/' + manager.profiles(ownerId)));
-  await manager.deleteProfile(ownerId, 'codex', profile);
+  await manager.deleteProfile(ownerId, profile);
 });
