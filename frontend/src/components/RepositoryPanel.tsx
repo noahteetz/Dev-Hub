@@ -83,6 +83,16 @@ export function RepositoryPanel({ project, repository, loading, refreshing, onRe
       component="section"
       sx={(theme) => ({ bgcolor: 'background.paper', borderRadius: 1, boxShadow: shadow(theme, 'flat'), mt: 2.5, p: { xs: 2, sm: 2.5 } })}
     >
+      {project.additionalRepositoryUrls?.length ? (
+        <Stack spacing={0.75} sx={{ mb: 2 }}>
+          <Typography variant="subtitle2">Additional repositories</Typography>
+          {project.additionalRepositoryUrls.map(url => (
+            <Typography key={url} variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+              <a href={url} target="_blank" rel="noreferrer">{url}</a>
+            </Typography>
+          ))}
+        </Stack>
+      ) : null}
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between' }}>
         <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 0 }}>
           <Box sx={(theme) => ({ alignItems: 'center', bgcolor: tint(theme, 0.08), borderRadius: 1, color: 'primary.main', display: 'flex', height: 36, justifyContent: 'center', width: 36 })}>

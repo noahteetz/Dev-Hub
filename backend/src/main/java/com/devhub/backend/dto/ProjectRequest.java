@@ -7,6 +7,11 @@ public record ProjectRequest(
 		String description,
 		String repositoryUrl,
 		String deploymentUrl,
-		List<ProjectLinkRequest> links
+		List<ProjectLinkRequest> links,
+		List<String> additionalRepositoryUrls
 ) {
+	public ProjectRequest(String name, String description, String repositoryUrl, String deploymentUrl,
+			List<ProjectLinkRequest> links) {
+		this(name, description, repositoryUrl, deploymentUrl, links, null);
+	}
 }

@@ -57,9 +57,14 @@ public class WorkspaceService {
         repository.lockProject(projectId);
         var project = projects.findById(projectId);
         if (project.status() == ProjectStatus.ARCHIVED) throw new ConflictException("Restore the project before starting a workspace");
-        String url = urls.parse(project.repositoryUrl()).canonicalUrl();
-        if (!url.matches("^https://(github\\.com|gitlab\\.com)/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$")
-                || url.contains("/../") || url.contains("/./")) throw new InvalidRequestException("Workspaces support GitHub/GitLab HTTPS repositories");
+        String url = workspaceUrl(project.repositoryUrl());
+        var checkouts = new java.util.ArrayList<Checkout>();
+        checkouts.add(new Checkout(url, "repo"));
+        for (String additional : project.additionalRepositoryUrls()) {
+            String checkoutUrl = workspaceUrl(additional);
+            String name = checkoutUrl.substring(checkoutUrl.lastIndexOf('/') + 1);
+            checkouts.add(new Checkout(checkoutUrl, "repo-" + (checkouts.size() + 1) + "-" + name.substring(0, Math.min(name.length(), 100))));
+        }
         String branch = text(body.branch(), 100, "Branch");
         if (!branch.matches("[A-Za-z0-9][A-Za-z0-9._/-]*") || branch.contains("..") || branch.contains("//")
                 || branch.endsWith("/") || branch.endsWith(".") || branch.endsWith(".lock") || branch.contains("/.")) {
@@ -76,7 +81,7 @@ public class WorkspaceService {
         String id = UUID.randomUUID().toString();
         var now = Instant.now();
         repository.insert(new Workspace(id, projectId, user.id(), url, branch, body.newBranch(), name, email,
-                "PROVISIONING", "RUNNING", 1, "", access.expiresAt(), now, now));
+                "PROVISIONING", "RUNNING", 1, "", access.expiresAt(), now, now, List.copyOf(checkouts)));
         return repository.find(id).orElseThrow();
     }
     @Transactional
@@ -165,15 +170,26 @@ public class WorkspaceService {
     public void closeTerminal(String workspace, String terminal) {
         var t = terminal(workspace, terminal); runner.closeTerminal(workspace, t.id()); repository.deleteTerminal(t.id());
     }
-    public Credential runnerCredential(String id) {
+    public Credential runnerCredential(String id) { return runnerCredential(id, null); }
+    public Credential runnerCredential(String id, String repositoryUrl) {
         var w = repository.find(uuid(id)).orElseThrow(() -> new ResourceNotFoundException("Workspace was not found"));
         if ((!w.desired().equals("RUNNING") && !w.status().equals("STOPPED") && !w.status().equals("DELETING")) || !w.authorizedUntil().isAfter(Instant.now()))
             throw new com.devhub.backend.exception.ForbiddenException("Workspace credential authorization expired");
         access.project(w.projectId(), w.ownerId());
-        RepositoryProvider provider = w.repositoryUrl().startsWith("https://github.com/") ? RepositoryProvider.GITHUB : RepositoryProvider.GITLAB;
+        String target = repositoryUrl == null ? w.repositoryUrl() : repositoryUrl;
+        if (w.repositories().stream().noneMatch(checkout -> checkout.repositoryUrl().equals(target)))
+            throw new com.devhub.backend.exception.ForbiddenException("Repository is not part of this workspace");
+        RepositoryProvider provider = target.startsWith("https://github.com/") ? RepositoryProvider.GITHUB : RepositoryProvider.GITLAB;
         return user.runAs(w.ownerId(), () -> credentials.credentialFor(provider)
                 .map(c -> new Credential(provider == RepositoryProvider.GITHUB ? "x-access-token" : "oauth2", c.token()))
                 .orElse(new Credential("", "")));
+    }
+    private String workspaceUrl(String value) {
+        String url = urls.parse(value).canonicalUrl();
+        if (!url.matches("^https://(github\\.com|gitlab\\.com)/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$")
+                || java.util.Arrays.stream(url.substring(8).split("/")).anyMatch(s -> s.equals(".") || s.equals("..")))
+            throw new InvalidRequestException("Workspaces support GitHub/GitLab HTTPS repositories");
+        return url;
     }
     private void requireRunningSlot(long owner, String except) {
         if (repository.countRunning(owner, except) >= settings.maxRunningPerUser)

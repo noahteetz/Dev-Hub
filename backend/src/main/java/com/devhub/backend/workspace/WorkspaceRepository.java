@@ -26,10 +26,10 @@ public class WorkspaceRepository {
     public List<Workspace> list(long userId, Long projectId) {
         return jdbc.query("SELECT * FROM workspaces WHERE owner_id = ? AND status <> 'DELETED'"
                 + (projectId == null ? "" : " AND project_id = ?") + " ORDER BY created_at DESC",
-                WorkspaceRepository::map, projectId == null ? new Object[]{userId} : new Object[]{userId, projectId});
+                WorkspaceRepository::map, projectId == null ? new Object[]{userId} : new Object[]{userId, projectId}).stream().map(this::withRepositories).toList();
     }
     public Optional<Workspace> find(String id) {
-        return jdbc.query("SELECT * FROM workspaces WHERE id = ?", WorkspaceRepository::map, id).stream().findFirst();
+        return jdbc.query("SELECT * FROM workspaces WHERE id = ?", WorkspaceRepository::map, id).stream().findFirst().map(this::withRepositories);
     }
     public void insert(Workspace w) {
         jdbc.update("""
@@ -38,6 +38,11 @@ public class WorkspaceRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PROVISIONING', 'RUNNING', ?)
                 """, w.id(), w.projectId(), w.ownerId(), w.ownerId() + ":" + w.projectId(), w.repositoryUrl(),
                 w.branch(), w.newBranch(), w.commitName(), w.commitEmail(), Timestamp.from(w.authorizedUntil()));
+        for (int i = 0; i < w.repositories().size(); i++) {
+            Checkout checkout = w.repositories().get(i);
+            jdbc.update("INSERT INTO workspace_repositories (workspace_id, repository_order, repository_url, directory) VALUES (?, ?, ?, ?)",
+                    w.id(), i, checkout.repositoryUrl(), checkout.directory());
+        }
     }
     public boolean hasRunning(long owner, String except) { return countRunning(owner, except) > 0; }
     public long countRunning(long owner, String except) {
@@ -61,13 +66,13 @@ public class WorkspaceRepository {
                 """, state, switch (state) { case "RUNNING" -> "PROVISIONING"; case "STOPPED" -> "STOPPING"; default -> "DELETING"; }, id);
     }
     public List<Workspace> reconcileCandidates() {
-        return jdbc.query("SELECT * FROM workspaces WHERE status <> 'DELETED' AND status <> 'ERROR' AND (status <> desired OR status = 'RUNNING') ORDER BY updated_at LIMIT 100", WorkspaceRepository::map);
+        return jdbc.query("SELECT * FROM workspaces WHERE status <> 'DELETED' AND status <> 'ERROR' AND (status <> desired OR status = 'RUNNING') ORDER BY updated_at LIMIT 100", WorkspaceRepository::map).stream().map(this::withRepositories).toList();
     }
     public boolean claim(Workspace w) {
         return jdbc.update("""
                 UPDATE workspaces SET lease_until = ? WHERE id = ? AND generation = ?
                     AND (lease_until IS NULL OR lease_until < CURRENT_TIMESTAMP)
-                """, Timestamp.from(Instant.now().plusSeconds(180)), w.id(), w.generation()) == 1;
+                """, Timestamp.from(Instant.now().plusSeconds(180L * Math.max(1, w.repositories().size()))), w.id(), w.generation()) == 1;
     }
     public void complete(Workspace w, String status, String error) {
         jdbc.update("""
@@ -111,10 +116,17 @@ public class WorkspaceRepository {
     }
     public void deleteTerminal(String id) { jdbc.update("DELETE FROM workspace_terminals WHERE id = ?", id); }
     public void clearTerminals(String id) { jdbc.update("DELETE FROM workspace_terminals WHERE workspace_id = ?", id); }
+    private Workspace withRepositories(Workspace w) {
+        var checkouts = jdbc.query("SELECT repository_url, directory FROM workspace_repositories WHERE workspace_id = ? ORDER BY repository_order",
+                (row, index) -> new Checkout(row.getString("repository_url"), row.getString("directory")), w.id());
+        return new Workspace(w.id(), w.projectId(), w.ownerId(), w.repositoryUrl(), w.branch(), w.newBranch(),
+                w.commitName(), w.commitEmail(), w.status(), w.desired(), w.generation(), w.error(),
+                w.authorizedUntil(), w.createdAt(), w.updatedAt(), checkouts);
+    }
     private static Workspace map(ResultSet r, int n) throws SQLException {
         return new Workspace(r.getString("id"), r.getLong("project_id"), r.getLong("owner_id"), r.getString("repository_url"),
                 r.getString("branch"), r.getBoolean("new_branch"), r.getString("commit_name"), r.getString("commit_email"),
                 r.getString("status"), r.getString("desired"), r.getLong("generation"), r.getString("error"),
-                r.getTimestamp("authorized_until").toInstant(), r.getTimestamp("created_at").toInstant(), r.getTimestamp("updated_at").toInstant());
+                r.getTimestamp("authorized_until").toInstant(), r.getTimestamp("created_at").toInstant(), r.getTimestamp("updated_at").toInstant(), List.of());
     }
 }
