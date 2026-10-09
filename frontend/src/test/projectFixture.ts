@@ -10,6 +10,7 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     favorite: false,
     statusBeforeArchive: null,
     repositoryUrl: '',
+    additionalRepositoryUrls: [],
     deploymentUrl: '',
     progressSummary: '',
     nextStep: 'Write the next test',

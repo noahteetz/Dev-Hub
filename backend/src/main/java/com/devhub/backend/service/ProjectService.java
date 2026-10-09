@@ -41,13 +41,15 @@ public class ProjectService {
 	@Transactional
 	public Project create(ProjectRequest request) {
 		ProjectRequest body = RequestValidation.requireRequest(request);
-		return projectRepository.create(
+		Project created = projectRepository.create(
 				RequestValidation.required(body.name(), "Project name"),
 				RequestValidation.optional(body.description()),
 				RequestValidation.optionalRepositoryUrl(body.repositoryUrl(), "Repository URL"),
 				RequestValidation.optionalUrl(body.deploymentUrl(), "Deployment URL"),
 				validateLinks(body.links())
 		);
+		projectRepository.replaceRepositories(created.id(), validateRepositories(created.repositoryUrl(), body.additionalRepositoryUrls()));
+		return getExisting(created.id());
 	}
 
 	public List<Project> findAll() {
@@ -67,8 +69,11 @@ public class ProjectService {
 	public Project update(long projectId, ProjectRequest request) {
 		long id = access.require(projectId, Permission.EDIT_METADATA).projectId();
 		ProjectRequest body = RequestValidation.requireRequest(request);
+		workspaces.lockProject(id);
 		Project existing = getExisting(id);
 		String repositoryUrl = RequestValidation.optionalRepositoryUrl(body.repositoryUrl(), "Repository URL");
+		List<String> repositories = validateRepositories(repositoryUrl, body.additionalRepositoryUrls() == null
+				? existing.additionalRepositoryUrls() : body.additionalRepositoryUrls());
 		if (projectRepository.update(
 				id,
 				RequestValidation.required(body.name(), "Project name"),
@@ -79,6 +84,7 @@ public class ProjectService {
 		) == 0) {
 			throw notFound(id);
 		}
+		projectRepository.replaceRepositories(id, repositories);
 		if (!existing.repositoryUrl().equals(repositoryUrl)) {
 			repositoryMetadataRepository.deleteByProjectId(id);
 		}
@@ -174,6 +180,29 @@ public class ProjectService {
 
 	private ResourceNotFoundException notFound(long projectId) {
 		return new ResourceNotFoundException("Project " + projectId + " was not found");
+	}
+
+	private List<String> validateRepositories(String primary, List<String> additional) {
+		if (additional == null || additional.isEmpty()) return List.of();
+		if (primary.isBlank()) throw new InvalidRequestException("Set a primary repository before adding other repositories");
+		if (additional.size() > 9) throw new InvalidRequestException("At most ten repositories per project");
+		var parser = new RepositoryUrlParser();
+		var seen = new java.util.HashSet<String>();
+		seen.add(repositoryKey(parser, primary));
+		var result = new ArrayList<String>();
+		for (String value : additional) {
+			String url = RequestValidation.optionalRepositoryUrl(RequestValidation.required(value, "Repository URL"), "Repository URL");
+			if (url.length() > 2048) throw new InvalidRequestException("Repository URL must not exceed 2048 characters");
+			if (!seen.add(repositoryKey(parser, url))) throw new InvalidRequestException("Each repository can only be linked once");
+			result.add(url);
+		}
+		return List.copyOf(result);
+	}
+
+	private String repositoryKey(RepositoryUrlParser parser, String url) {
+		var reference = parser.parse(url);
+		return reference.provider() == com.devhub.backend.model.RepositoryProvider.GITHUB
+				? reference.canonicalUrl().toLowerCase(java.util.Locale.ROOT) : reference.canonicalUrl();
 	}
 
 	private List<ProjectLink> validateLinks(List<ProjectLinkRequest> links) {

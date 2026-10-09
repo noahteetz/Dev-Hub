@@ -13,7 +13,7 @@ vi.mock('../api', () => ({ api: { workspaces: mocks, aiProfiles: { list: mocks.p
 vi.mock('./TerminalPane', () => ({ TerminalPane: () => null }))
 const id = '11111111-2222-3333-4444-555555555555'
 function workspace(status: RemoteWorkspace['status'] = 'STOPPED'): RemoteWorkspace {
-  return { id, projectId: 1, ownerId: 1, repositoryUrl: 'https://github.com/a/b', branch: 'work/test', newBranch: true,
+  return { id, projectId: 1, ownerId: 1, repositoryUrl: 'https://github.com/a/b', repositories: [{ repositoryUrl: 'https://github.com/a/b', directory: 'repo' }], branch: 'work/test', newBranch: true,
     commitName: 'Test', commitEmail: 'test@example.com', status, desired: status === 'RUNNING' ? 'RUNNING' : 'STOPPED',
     generation: 1, error: '', authorizedUntil: '', createdAt: '', updatedAt: '' }
 }
@@ -47,6 +47,16 @@ describe('remote workspaces', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Work · Claude' }))
     await waitFor(() => expect(mocks.openTerminal).toHaveBeenCalledWith(id, 'CLAUDE', 'work'))
     expect(await screen.findByRole('button', { name: 'Work · Claude' })).toBeInTheDocument()
+  })
+  it('shows the saved checkout paths even when project repositories have changed', async () => {
+    const saved = { ...workspace(), repositories: [
+      { repositoryUrl: 'https://github.com/a/b', directory: 'repo' },
+      { repositoryUrl: 'https://gitlab.com/a/docs', directory: 'repo-2-docs' },
+    ] }
+    mocks.list.mockResolvedValue([saved]); mocks.get.mockResolvedValue(saved)
+    view()
+    expect(await screen.findByText('/workspace/repo-2-docs')).toBeInTheDocument()
+    expect(screen.getByText('/workspace/repo')).toBeInTheDocument()
   })
   it('does not offer execution when the feature or account is unavailable', async () => {
     mocks.config.mockResolvedValue({ enabled: true, allowed: false })

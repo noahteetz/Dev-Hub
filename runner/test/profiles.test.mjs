@@ -9,7 +9,7 @@ const terminalId = '11111111-2222-3333-4444-555555555556';
 const profile = '11111111-2222-3333-4444-555555555557';
 
 function fixture() {
-  let meta = {id, ownerId: 1, status: 'RUNNING', terminals: []};
+  let meta = {id, ownerId: 1, status: 'RUNNING', repositoryUrl: 'https://github.com/a/b', terminals: []};
   const commands = [];
   const docker = {inspect: async () => ({State: {Running: true}}),
     exec: async (_name, command) => { commands.push(command); return {code: 0, output: command[0] === 'cat' ? '2\n' : ''}; }};
@@ -34,7 +34,8 @@ test('both provider environments are bound; a retried terminal start cannot laun
 });
 test('a named profile shell binds both accounts and inherits a multi-checkout directory', async () => {
   const f = fixture(); const original = f.manager.read;
-  f.manager.read = async () => ({...(await original()), repositories: [{}, {}]});
+  f.manager.read = async () => ({...(await original()), repositories: [{repositoryUrl: 'https://github.com/a/b', directory: 'repo'},
+    {repositoryUrl: 'https://github.com/a/docs', directory: 'repo-2-docs'}]});
   await f.manager.terminal(id, {...input, launchMode: 'SHELL'});
   const start = f.commands.find(c => c[0] === 'tmux');
   assert.ok(start.includes('/workspace'));

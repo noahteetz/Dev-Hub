@@ -39,6 +39,8 @@ export function ProjectDialog({
   const [name, setName] = useState(project?.name ?? '')
   const [description, setDescription] = useState(project?.description ?? '')
   const [repositoryUrl, setRepositoryUrl] = useState(project?.repositoryUrl ?? '')
+  const [additionalRepositoryUrls, setAdditionalRepositoryUrls] = useState<string[]>(project?.additionalRepositoryUrls ?? [])
+  const [pickerTarget, setPickerTarget] = useState<number | null>(null)
   const [deploymentUrl, setDeploymentUrl] = useState(project?.deploymentUrl ?? '')
   const [links, setLinks] = useState<ProjectLinkInput[]>(
     project?.links.map(({ label, url }) => ({ label, url })) ?? [],
@@ -81,6 +83,7 @@ export function ProjectDialog({
       name,
       description,
       repositoryUrl,
+      additionalRepositoryUrls: additionalRepositoryUrls.map(url => url.trim()).filter(Boolean),
       deploymentUrl,
       links: links.filter((link) => link.label.trim() || link.url.trim()),
     })
@@ -130,7 +133,7 @@ export function ProjectDialog({
               disabled={connectedProviders.length === 0}
               startIcon={<FolderOpenRoundedIcon />}
               sx={{ flexShrink: 0, mt: { sm: 1 } }}
-              onClick={() => setPickerOpen(true)}
+              onClick={() => { setPickerTarget(null); setPickerOpen(true) }}
             >
               Choose
             </Button>
@@ -141,6 +144,45 @@ export function ProjectDialog({
               repositories instead of pasting a URL.
             </Typography>
           ) : null}
+          <Typography color="text.secondary" variant="caption" sx={{ display: 'block', mt: 1 }}>
+            The main repository supplies project activity and uses the workspace branch you choose.
+          </Typography>
+          <Stack spacing={1.25} sx={{ mt: 2 }}>
+            {additionalRepositoryUrls.map((url, index) => (
+              <Stack key={index} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <TextField
+                  fullWidth
+                  label={`Additional repository ${index + 1}`}
+                  placeholder="https://github.com/you/docs"
+                  required
+                  type="url"
+                  size="small"
+                  value={url}
+                  onChange={event => setAdditionalRepositoryUrls(current => current.map((value, i) => i === index ? event.target.value : value))}
+                />
+                <IconButton
+                  aria-label={`Choose additional repository ${index + 1}`}
+                  disabled={connectedProviders.length === 0}
+                  onClick={() => { setPickerTarget(index); setPickerOpen(true) }}
+                ><FolderOpenRoundedIcon fontSize="small" /></IconButton>
+                <IconButton
+                  aria-label={`Remove repository ${index + 1}`}
+                  color="error"
+                  onClick={() => setAdditionalRepositoryUrls(current => current.filter((_, i) => i !== index))}
+                ><DeleteOutlineRoundedIcon fontSize="small" /></IconButton>
+              </Stack>
+            ))}
+            <Button
+              startIcon={<AddRoundedIcon />}
+              disabled={!repositoryUrl.trim() || additionalRepositoryUrls.length >= 9}
+              sx={{ alignSelf: 'flex-start' }}
+              onClick={() => setAdditionalRepositoryUrls(current => [...current, ''])}
+            >Add repository</Button>
+            <Typography color="text.secondary" variant="caption">
+              New workspaces check out all repositories in separate folders. Additional repositories start on their default branch.
+              Repository changes apply to new workspaces.
+            </Typography>
+          </Stack>
           <TextField
             fullWidth
             label="Deployment URL"
@@ -190,7 +232,7 @@ export function ProjectDialog({
             Cancel
           </Button>
           <Button
-            disabled={saving || !name.trim()}
+            disabled={saving || !name.trim() || (additionalRepositoryUrls.length > 0 && !repositoryUrl.trim())}
             startIcon={saving ? <CircularProgress size={16} /> : null}
             type="submit"
             variant="contained"
@@ -205,6 +247,11 @@ export function ProjectDialog({
       open={pickerOpen}
       onClose={() => setPickerOpen(false)}
       onSelect={(repository) => {
+        if (pickerTarget !== null) {
+          setAdditionalRepositoryUrls(current => current.map((url, index) => index === pickerTarget ? repository.webUrl : url))
+          setPickerOpen(false)
+          return
+        }
         setRepositoryUrl(repository.webUrl)
         if (!name.trim()) {
           setName(repository.name)

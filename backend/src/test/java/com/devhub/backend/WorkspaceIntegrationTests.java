@@ -247,5 +247,58 @@ class WorkspaceIntegrationTests {
                 .isInstanceOf(InvalidRequestException.class);
         as(editor, () -> service.createProfile(new ProfileInput("CODEX", "Work")));
     }
+    @Test void repositoriesArePersistedAndSnapshottedForEachWorkspace() {
+        var urls = List.of("https://github.com/example/docs", "https://gitlab.com/example/api");
+        var updated = as(owner, () -> projects.update(project.id(), new ProjectRequest("Remote", "", project.repositoryUrl(), "", List.of(), urls)));
+        assertThat(updated.additionalRepositoryUrls()).containsExactlyElementsOf(urls);
+        assertThat(as(editor, () -> projects.findById(project.id())).additionalRepositoryUrls()).containsExactlyElementsOf(urls);
+        assertThat(as(owner, () -> projects.findAll())).filteredOn(p -> p.id().equals(project.id()))
+                .extracting(Project::additionalRepositoryUrls).containsExactly(urls);
+        var w = create(owner);
+        assertThat(w.repositories()).containsExactly(new Checkout(project.repositoryUrl(), "repo"),
+                new Checkout(urls.get(0), "repo-2-docs"), new Checkout(urls.get(1), "repo-3-api"));
+        // A legacy API client omitting the new field must not unlink repositories.
+        as(owner, () -> projects.update(project.id(), new ProjectRequest("Renamed", "", project.repositoryUrl(), "", List.of())));
+        assertThat(as(owner, () -> projects.findById(project.id())).additionalRepositoryUrls()).containsExactlyElementsOf(urls);
+        as(owner, () -> projects.update(project.id(), new ProjectRequest("Renamed", "", project.repositoryUrl(), "", List.of(), List.of())));
+        assertThat(as(owner, () -> projects.findById(project.id())).additionalRepositoryUrls()).isEmpty();
+        as(owner, () -> service.stop(w.id()));
+        repository.complete(repository.find(w.id()).orElseThrow(), "STOPPED", "");
+        assertThat(as(owner, () -> service.start(w.id())).repositories()).isEqualTo(w.repositories());
+        assertThat(create(editor).repositories()).containsExactly(new Checkout(project.repositoryUrl(), "repo"));
+    }
+    @Test void repositoryValidationRejectsDuplicatesAndUnauthorizedEdits() {
+        for (String duplicate : List.of(project.repositoryUrl(), "git@github.com:EXAMPLE/repository.git")) {
+            assertThatThrownBy(() -> as(owner, () -> projects.update(project.id(), new ProjectRequest("Remote", "",
+                    project.repositoryUrl(), "", List.of(), List.of(duplicate)))))
+                    .isInstanceOf(InvalidRequestException.class);
+        }
+        assertThatThrownBy(() -> as(owner, () -> projects.update(project.id(), new ProjectRequest("Remote", "", "", "",
+                List.of(), List.of("https://github.com/example/docs"))))).isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> as(editor, () -> projects.update(project.id(), new ProjectRequest("Remote", "", project.repositoryUrl(), "",
+                List.of(), List.of("https://github.com/example/docs"))))).isInstanceOf(ForbiddenException.class);
+        assertThat(as(owner, () -> projects.findById(project.id())).additionalRepositoryUrls()).isEmpty();
+    }
+    @Test void unsupportedAdditionalRepositoryPreventsPartialWorkspaceCreation() {
+        as(owner, () -> projects.update(project.id(), new ProjectRequest("Remote", "", project.repositoryUrl(), "",
+                List.of(), List.of("https://git.example.com/team/docs"))));
+        assertThatThrownBy(() -> create(owner)).isInstanceOf(InvalidRequestException.class);
+        assertThat(as(owner, () -> service.list(project.id()))).isEmpty();
+    }
+    @Test void credentialsAreScopedToSnapshotAndProviderOfEveryCheckout() {
+        String gitlab = "https://gitlab.com/example/api";
+        as(owner, () -> projects.update(project.id(), new ProjectRequest("Remote", "", project.repositoryUrl(), "", List.of(), List.of(gitlab))));
+        var w = running(editor);
+        as(editor, () -> { credentials.save(RepositoryProvider.GITLAB, "editor", "gitlab.com", cipher.encrypt("gitlab-secret"),
+                "cret", "editor", List.of("api"), GitCredentialStatus.VERIFIED); return null; });
+        assertThat(service.runnerCredential(w.id(), gitlab)).isEqualTo(new Credential("oauth2", "gitlab-secret"));
+        assertThat(service.runnerCredential(w.id(), project.repositoryUrl()).password()).isEmpty();
+        assertThatThrownBy(() -> service.runnerCredential(w.id(), "https://gitlab.com/example/unlinked"))
+                .isInstanceOf(ForbiddenException.class);
+        as(owner, () -> projects.update(project.id(), new ProjectRequest("Remote", "", project.repositoryUrl(), "", List.of(), List.of())));
+        assertThat(service.runnerCredential(w.id(), gitlab).password()).isEqualTo("gitlab-secret");
+        as(owner, () -> { members.remove(project.id(), editor); return null; });
+        assertThatThrownBy(() -> service.runnerCredential(w.id(), gitlab)).isInstanceOf(ResourceNotFoundException.class);
+    }
     private <T> T as(long user, Supplier<T> action) { return currentUser.runAs(user, action); }
 }

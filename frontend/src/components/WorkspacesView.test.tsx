@@ -16,7 +16,7 @@ vi.mock('./TerminalPane', () => ({
 }))
 
 function workspace(id: string, projectId: number, status: RemoteWorkspace['status']): RemoteWorkspace {
-  return { id, projectId, ownerId: 1, repositoryUrl: 'https://github.com/a/b', branch: 'work/' + id, newBranch: true,
+  return { id, projectId, ownerId: 1, repositoryUrl: 'https://github.com/a/b', repositories: [{ repositoryUrl: 'https://github.com/a/b', directory: 'repo' }], branch: 'work/' + id, newBranch: true,
     commitName: 'Test', commitEmail: 'test@example.com', status, desired: status === 'RUNNING' ? 'RUNNING' : 'STOPPED',
     generation: 1, error: '', authorizedUntil: '', createdAt: '', updatedAt: '' }
 }

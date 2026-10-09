@@ -146,6 +146,12 @@ An open browser tab picks the new data up when it comes back into focus, at most
 
 Remote workspaces run in the existing Docker environment and are opt-in. In a project, open **Remote workspace** to create a personal checkout on an existing or new branch. OWNER and EDITOR project access plus the Keycloak realm role devhub-workspace are required.
 
+In **Edit project → Add repository**, link up to nine additional repositories, for example public documentation/releases and an API next to private application code. You can paste URLs or use the repository picker. Project activity and metadata still come from the main repository.
+
+New workspaces clone every linked repository: the main checkout stays at `/workspace/repo`, additional checkouts use `/workspace/repo-2-<name>`, `/workspace/repo-3-<name>`, etc. The selected workspace branch applies to the main repository; additional repositories initially use their own default branch. In a workspace with several repositories, terminals open in `/workspace`; use `cd` to enter a checkout before running Git or project commands. The workspace panel lists the exact paths. Each checkout uses your personal Git credentials for its provider.
+
+The repository list is saved when the workspace is created. Editing project repositories affects new workspaces; stop/resume retains all existing checkouts and local changes. Deletion checks **every** checkout and reports the repository alongside any changes or unpushed branches. Upgrading applies migration V10 to retain existing single-repository workspaces; rebuild the backend, frontend, runner and workspace image together.
+
 Each user can keep three workspaces (one per project) and run two of them at once (`WORKSPACE_MAX_PER_USER`, `WORKSPACE_MAX_RUNNING_PER_USER`). **Workspaces** in the sidebar lists all of them across projects: resume or stop them there, pin terminals into a grid of one to three columns, drag to reorder and maximize a single terminal.
 
 **Stop** ends compute and keeps files; **Resume** starts another container with those files. **Delete checkout** verifies Git again after stopping all writers. Uncommitted/untracked/ignored files, stashes, unpushed branches, detached commits and unknown Git state block normal deletion. Discarding requires the exact workspace ID. Personal Claude/Codex profiles survive checkout deletion and can be managed separately in Settings.
