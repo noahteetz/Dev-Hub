@@ -7,13 +7,15 @@ import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded'
 import PushPinIcon from '@mui/icons-material/PushPin'
 import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined'
 import {
-  Alert, Box, Button, Chip, IconButton, Menu, MenuItem, Paper, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
+  Alert, Box, Button, Chip, IconButton, Paper, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import type { AiProfile, Project, RemoteWorkspace, WorkspaceConfig, WorkspaceTerminal } from '../types'
 import { ConfirmDialog } from './ConfirmDialog'
+import { TerminalMenu } from './TerminalMenu'
+import { terminalLabel as labelTerminal } from './terminalLabel'
 import { TerminalPane } from './TerminalPane'
 
 const gridKey = 'devhub.workspaces.grid'
@@ -54,7 +56,8 @@ export function WorkspacesView({ projects }: { projects: Project[] }) {
   }, [])
 
   const refresh = useCallback(async () => {
-    const mine = await api.workspaces.mine()
+    const [mine, currentProfiles] = await Promise.all([api.workspaces.mine(), api.aiProfiles.list()])
+    setProfiles(currentProfiles)
     // Fetching a running workspace individually also renews its Git authorization, as the project panel does.
     const current = await Promise.all(mine.map(w => isRunning(w) ? api.workspaces.get(w.id) : Promise.resolve(w)))
     const sessions = await Promise.all(current.map(async w => [w.id, isRunning(w) ? await api.workspaces.terminals(w.id) : []] as const))
@@ -75,8 +78,7 @@ export function WorkspacesView({ projects }: { projects: Project[] }) {
       if (!alive) return
       setConfig(value)
       if (!value.enabled || !value.allowed) return
-      const p = await api.aiProfiles.list()
-      if (alive) { setProfiles(p); await refresh() }
+      if (alive) await refresh()
     }).catch((reason: unknown) => { if (alive) setError(message(reason)) })
     return () => { alive = false }
   }, [refresh])
@@ -106,11 +108,7 @@ export function WorkspacesView({ projects }: { projects: Project[] }) {
 
   const projectName = (id: number) => projects.find(p => p.id === id)?.name ?? 'Project ' + id
   const allTerminals = Object.values(terminals).flat()
-  const terminalLabel = (t: WorkspaceTerminal) => {
-    const index = (terminals[t.workspaceId] ?? []).findIndex(other => other.id === t.id)
-    const profile = profiles.find(p => p.id === t.profileId)
-    return (profile ? profile.name : t.provider.toLowerCase()) + ' ' + (index + 1)
-  }
+  const terminalLabel = (t: WorkspaceTerminal) => labelTerminal(t, profiles, terminals[t.workspaceId] ?? [])
   const workspaceOf = (t: WorkspaceTerminal) => workspaces?.find(w => w.id === t.workspaceId)
   const grid = pinned.map(id => allTerminals.find(t => t.id === id)).filter((t): t is WorkspaceTerminal => Boolean(t))
   const activeCount = workspaces?.filter(isActive).length ?? 0
@@ -246,24 +244,15 @@ export function WorkspacesView({ projects }: { projects: Project[] }) {
           </Stack>
         )}
 
-      <Menu anchorEl={menu?.anchor} open={Boolean(menu)} onClose={() => setMenu(null)}>
-        {[{ provider: 'SHELL' as const, profile: null as AiProfile | null }, ...profiles.map(p => ({ provider: p.provider, profile: p }))].map(choice => (
-          <MenuItem
-            key={choice.profile?.id ?? 'shell'}
-            onClick={() => {
-              const target = menu?.workspace
-              setMenu(null)
-              if (!target) return
-              void run(async () => {
-                const t = await api.workspaces.openTerminal(target.id, choice.provider, choice.profile?.id ?? null)
-                updatePinned(ids => [...ids, t.id])
-              })
-            }}
-          >
-            {choice.profile ? (choice.provider === 'CLAUDE' ? 'Claude' : 'Codex') + ' · ' + choice.profile.name : 'Shell'}
-          </MenuItem>
-        ))}
-      </Menu>
+      <TerminalMenu anchorEl={menu?.anchor ?? null} onClose={() => setMenu(null)} profiles={profiles} onManage={() => setMenu(null)} onChoose={(launchMode, profileId) => {
+          const target = menu?.workspace
+          setMenu(null)
+          if (!target) return
+          void run(async () => {
+            const t = await api.workspaces.openTerminal(target.id, launchMode, profileId)
+            updatePinned(ids => [...ids, t.id])
+          })
+        }} />
       <ConfirmDialog
         confirmLabel="End terminal"
         loading={busy}

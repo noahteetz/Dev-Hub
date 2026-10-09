@@ -176,13 +176,14 @@ export const api = {
     deletionCheck: (id: string) => request<WorkspaceGitReport>('/api/workspaces/' + id + '/deletion-check', { method: 'POST' }),
     remove: (id: string, discard = false, confirmation = '') => request<RemoteWorkspace>('/api/workspaces/' + id, { method: 'DELETE', body: jsonBody({ discard, confirmation }) }),
     terminals: (id: string) => request<WorkspaceTerminal[]>('/api/workspaces/' + id + '/terminals'),
-    openTerminal: (id: string, provider: WorkspaceTerminal['provider'], profileId: string | null) => request<WorkspaceTerminal>('/api/workspaces/' + id + '/terminals', { method: 'POST', body: jsonBody({ provider, profileId }) }),
+    openTerminal: (id: string, launchMode: WorkspaceTerminal['launchMode'], profileId: string | null) => request<WorkspaceTerminal>('/api/workspaces/' + id + '/terminals', { method: 'POST', body: jsonBody({ launchMode, profileId }) }),
     closeTerminal: (id: string, terminal: string) => request<void>('/api/workspaces/' + id + '/terminals/' + terminal, { method: 'DELETE' }),
     ticket: (id: string, terminal: string) => request<{ ticket: string; expiresAt: string }>('/api/workspaces/' + id + '/terminals/' + terminal + '/ticket', { method: 'POST' }),
   },
   aiProfiles: {
     list: () => request<AiProfile[]>('/api/ai-profiles'),
-    create: (provider: AiProfile['provider'], name: string) => request<AiProfile>('/api/ai-profiles', { method: 'POST', body: jsonBody({ provider, name }) }),
+    create: (providers: AiProfile['providers'], name: string) => request<AiProfile>('/api/ai-profiles', { method: 'POST', body: jsonBody({ providers, name }) }),
+    update: (id: string, input: { name?: string; providers?: AiProfile['providers'] }) => request<AiProfile>('/api/ai-profiles/' + id, { method: 'PATCH', body: jsonBody(input) }),
     remove: (id: string) => request<void>('/api/ai-profiles/' + id, { method: 'DELETE' }),
   },
   search: {

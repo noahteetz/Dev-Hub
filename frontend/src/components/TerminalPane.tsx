@@ -98,7 +98,7 @@ export function TerminalPane({ terminal, title, actions, fill = false }: Termina
   return (
     <Stack spacing={1} sx={fill ? { height: '100%', minHeight: 0 } : undefined}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', minWidth: 0 }}>
-        <Typography noWrap variant="body2">{title ? title + ' · ' : ''}{terminal.provider} · {status}</Typography>
+        <Typography noWrap variant="body2">{title ?? terminal.launchMode} · {status}</Typography>
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexShrink: 0 }}>
           <Button size="small" onClick={() => { setStatus('Connecting'); setError(''); setAttempt(a => a + 1) }}>Reconnect</Button>
           {actions}

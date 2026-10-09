@@ -90,15 +90,37 @@ public class WorkspaceRepository {
         jdbc.update("DELETE FROM workspaces WHERE project_id = ? AND status = 'DELETED'", projectId);
     }
     public List<Profile> profiles(long owner) {
-        return jdbc.query("SELECT * FROM ai_profiles WHERE owner_id = ? ORDER BY provider, name",
-                (r, n) -> new Profile(r.getString("id"), r.getString("provider"), r.getString("name"), r.getTimestamp("created_at").toInstant()), owner);
+        return jdbc.query("SELECT * FROM ai_profiles WHERE owner_id = ? ORDER BY normalized_name",
+                (r, n) -> new Profile(r.getString("id"), r.getString("name"), List.of(), r.getTimestamp("created_at").toInstant()), owner)
+                .stream().map(p -> new Profile(p.id(), p.name(), profileProviders(p.id(), true), p.createdAt())).toList();
     }
     public Profile profile(String id, long owner) {
         return profiles(owner).stream().filter(p -> p.id().equals(id)).findFirst()
                 .orElseThrow(() -> new com.devhub.backend.exception.ResourceNotFoundException("Profile was not found"));
     }
-    public void insertProfile(String id, long owner, String provider, String name) {
-        jdbc.update("INSERT INTO ai_profiles (id, owner_id, provider, name) VALUES (?, ?, ?, ?)", id, owner, provider, name);
+    public List<String> profileProviders(String id, boolean enabledOnly) {
+        return jdbc.queryForList("SELECT provider FROM ai_profile_providers WHERE profile_id = ?"
+                + (enabledOnly ? " AND enabled = TRUE" : "") + " ORDER BY provider", String.class, id);
+    }
+    public void insertProfile(String id, long owner, List<String> providers, String name) {
+        jdbc.update("INSERT INTO ai_profiles (id, owner_id, name, normalized_name) VALUES (?, ?, ?, ?)",
+                id, owner, name, name.toLowerCase(java.util.Locale.ROOT));
+        replaceProfileProviders(id, providers);
+    }
+    public void updateProfile(String id, String name, List<String> providers) {
+        jdbc.update("UPDATE ai_profiles SET name = ?, normalized_name = ? WHERE id = ?", name, name.toLowerCase(java.util.Locale.ROOT), id);
+        replaceProfileProviders(id, providers);
+    }
+    private void replaceProfileProviders(String id, List<String> providers) {
+        jdbc.update("UPDATE ai_profile_providers SET enabled = FALSE WHERE profile_id = ?", id);
+        for (String provider : providers) {
+            if (jdbc.update("UPDATE ai_profile_providers SET enabled = TRUE WHERE profile_id = ? AND provider = ?", id, provider) == 0)
+                jdbc.update("INSERT INTO ai_profile_providers (profile_id, provider) VALUES (?, ?)", id, provider);
+        }
+    }
+    public List<String> terminalsUsingProvider(String profile, String provider) {
+        return jdbc.queryForList("SELECT t.id FROM workspace_terminals t JOIN workspace_terminal_providers p ON p.terminal_id = t.id WHERE t.profile_id = ? AND p.provider = ?",
+                String.class, profile, provider);
     }
     public boolean profileUsed(String id) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM workspace_terminals WHERE profile_id = ?", Long.class, id) > 0;
@@ -108,11 +130,14 @@ public class WorkspaceRepository {
     }
     public List<Terminal> terminals(String workspaceId) {
         return jdbc.query("SELECT * FROM workspace_terminals WHERE workspace_id = ? ORDER BY created_at",
-                (r, n) -> new Terminal(r.getString("id"), r.getString("workspace_id"), r.getString("provider"), r.getString("profile_id")), workspaceId);
+                (r, n) -> new Terminal(r.getString("id"), r.getString("workspace_id"), r.getString("launch_mode"), r.getString("profile_id"), List.of()), workspaceId)
+                .stream().map(t -> new Terminal(t.id(), t.workspaceId(), t.launchMode(), t.profileId(),
+                        jdbc.queryForList("SELECT provider FROM workspace_terminal_providers WHERE terminal_id = ? ORDER BY provider", String.class, t.id()))).toList();
     }
     public void insertTerminal(Terminal t) {
-        jdbc.update("INSERT INTO workspace_terminals (id, workspace_id, provider, profile_id) VALUES (?, ?, ?, ?)",
-                t.id(), t.workspaceId(), t.provider(), t.profileId());
+        jdbc.update("INSERT INTO workspace_terminals (id, workspace_id, provider, launch_mode, profile_id) VALUES (?, ?, ?, ?, ?)",
+                t.id(), t.workspaceId(), t.launchMode(), t.launchMode(), t.profileId());
+        for (String provider : t.providers()) jdbc.update("INSERT INTO workspace_terminal_providers (terminal_id, provider) VALUES (?, ?)", t.id(), provider);
     }
     public void deleteTerminal(String id) { jdbc.update("DELETE FROM workspace_terminals WHERE id = ?", id); }
     public void clearTerminals(String id) { jdbc.update("DELETE FROM workspace_terminals WHERE workspace_id = ?", id); }

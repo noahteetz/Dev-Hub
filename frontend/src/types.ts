@@ -390,16 +390,19 @@ export interface WorkspaceConfig {
   /** How many workspaces the user may keep, running or stopped. */
   maxWorkspaces: number
 }
+export type AiProvider = 'CLAUDE' | 'CODEX'
+export type TerminalLaunchMode = 'SHELL' | AiProvider
 export interface AiProfile {
   id: string
-  provider: 'CLAUDE' | 'CODEX'
+  providers: AiProvider[]
   name: string
   createdAt: string
 }
 export interface WorkspaceTerminal {
   id: string
   workspaceId: string
-  provider: 'SHELL' | 'CLAUDE' | 'CODEX'
+  launchMode: TerminalLaunchMode
+  providers: AiProvider[]
   profileId: string | null
 }
 export interface WorkspaceGitReport {

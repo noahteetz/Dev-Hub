@@ -196,6 +196,57 @@ class WorkspaceIntegrationTests {
         verify(runner).start(argThat(value -> value.id().equals(pending.id())));
         assertThat(repository.find(pending.id()).orElseThrow().status()).isEqualTo("RUNNING");
     }
+    @Test void oneProfileBindsBothProvidersAndShellAndCliTerminalsUseStableSnapshots() {
+        var w = running(owner);
+        var p = as(owner, () -> service.createProfile(new ProfileInput("Work", List.of("CLAUDE", "CODEX"), null)));
+        assertThat(p.providers()).containsExactly("CLAUDE", "CODEX");
+        var shell = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("SHELL", p.id(), null)));
+        var claude = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CLAUDE", p.id(), null)));
+        var codex = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id(), null)));
+        assertThat(shell.launchMode()).isEqualTo("SHELL");
+        assertThat(shell.providers()).containsExactly("CLAUDE", "CODEX");
+        assertThat(as(owner, () -> service.terminals(w.id()))).containsExactly(shell, claude, codex);
+        var renamed = as(owner, () -> service.updateProfile(p.id(), new ProfilePatch("Renamed", null)));
+        assertThat(renamed.id()).isEqualTo(p.id());
+        assertThat(renamed.providers()).containsExactly("CLAUDE", "CODEX");
+        assertThatThrownBy(() -> as(owner, () -> service.updateProfile(p.id(), new ProfilePatch(null, List.of("CLAUDE")))))
+                .isInstanceOf(ConflictException.class).hasMessageContaining("End terminals");
+    }
+    @Test void enablingOnlyAffectsNewTerminalsAndDisablingRetainsProviderConfiguration() {
+        var w = running(owner);
+        var p = as(owner, () -> service.createProfile(new ProfileInput("CLAUDE", "Work")));
+        var shell = as(owner, () -> service.createTerminal(w.id(), new TerminalInput("SHELL", p.id(), null)));
+        as(owner, () -> service.updateProfile(p.id(), new ProfilePatch(null, List.of("CLAUDE", "CODEX"))));
+        assertThat(repository.terminals(w.id()).getFirst().providers()).containsExactly("CLAUDE");
+        as(owner, () -> service.updateProfile(p.id(), new ProfilePatch(null, List.of("CLAUDE"))));
+        verify(runner).checkProfile(owner, p.id(), List.of("CODEX"));
+        assertThat(repository.profileProviders(p.id(), false)).containsExactly("CLAUDE", "CODEX");
+        as(owner, () -> service.updateProfile(p.id(), new ProfilePatch(null, List.of("CLAUDE", "CODEX"))));
+        as(owner, () -> { service.closeTerminal(w.id(), shell.id()); return null; });
+        assertThat(repository.terminals(w.id())).isEmpty();
+        as(owner, () -> service.stop(w.id()));
+        repository.complete(repository.find(w.id()).orElseThrow(), "STOPPED", "");
+        as(owner, () -> { service.deleteProfile(p.id()); return null; });
+        verify(runner).deleteProfile(owner, p.id());
+        assertThat(repository.profileProviders(p.id(), false)).isEmpty();
+    }
+    @Test void profileNamesProvidersAndCliSelectionAreValidatedAndIsolated() {
+        var w = running(owner);
+        var p = as(owner, () -> service.createProfile(new ProfileInput("CLAUDE", " Work ")));
+        assertThatThrownBy(() -> as(owner, () -> service.createProfile(new ProfileInput("CODEX", "work"))))
+                .isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> as(editor, () -> service.updateProfile(p.id(), new ProfilePatch("Stolen", null))))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> as(owner, () -> service.createProfile(new ProfileInput("Empty", List.of(), null))))
+                .isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CODEX", p.id(), null))))
+                .isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CLAUDE", null, null))))
+                .isInstanceOf(InvalidRequestException.class);
+        assertThatThrownBy(() -> as(owner, () -> service.createTerminal(w.id(), new TerminalInput("CLAUDE", p.id(), "CODEX"))))
+                .isInstanceOf(InvalidRequestException.class);
+        as(editor, () -> service.createProfile(new ProfileInput("CODEX", "Work")));
+    }
     @Test void repositoriesArePersistedAndSnapshottedForEachWorkspace() {
         var urls = List.of("https://github.com/example/docs", "https://gitlab.com/example/api");
         var updated = as(owner, () -> projects.update(project.id(), new ProjectRequest("Remote", "", project.repositoryUrl(), "", List.of(), urls)));

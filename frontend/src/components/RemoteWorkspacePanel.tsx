@@ -1,12 +1,14 @@
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControlLabel, MenuItem, Paper, Stack, TextField, Typography,
+  FormControlLabel, Paper, Stack, TextField, Typography,
 } from '@mui/material'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useOptionalAuth } from '../auth/useOptionalAuth'
 import type { AiProfile, Project, RemoteWorkspace, WorkspaceConfig, WorkspaceGitReport, WorkspaceResources, WorkspaceTerminal } from '../types'
+import { TerminalMenu } from './TerminalMenu'
+import { terminalLabel } from './terminalLabel'
 import { TerminalPane } from './TerminalPane'
 
 function message(error: unknown) { return error instanceof Error ? error.message : 'Workspace operation failed' }
@@ -17,8 +19,7 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
   const [profiles, setProfiles] = useState<AiProfile[]>([])
   const [terminals, setTerminals] = useState<WorkspaceTerminal[]>([])
   const [selected, setSelected] = useState('')
-  const [provider, setProvider] = useState<WorkspaceTerminal['provider']>('SHELL')
-  const [profile, setProfile] = useState('')
+  const [terminalAnchor, setTerminalAnchor] = useState<HTMLElement | null>(null)
   const [resources, setResources] = useState<WorkspaceResources | null>(null)
   const [git, setGit] = useState<WorkspaceGitReport | null>(null)
   const [branch, setBranch] = useState(() => 'work/devhub-' + Date.now())
@@ -32,7 +33,8 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
   const [confirmation, setConfirmation] = useState('')
 
   const refresh = useCallback(async () => {
-    const values = await api.workspaces.list(project.id)
+    const [values, currentProfiles] = await Promise.all([api.workspaces.list(project.id), api.aiProfiles.list()])
+    setProfiles(currentProfiles)
     if (!values.length) { setWorkspace(null); setTerminals([]); setResources(null); return }
     const current = await api.workspaces.get(values[0].id)
     setWorkspace(current)
@@ -50,8 +52,7 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
       if (!alive) return
       setConfig(value)
       if (value.enabled && value.allowed) {
-        const p = await api.aiProfiles.list()
-        if (alive) { setProfiles(p); await refresh() }
+        if (alive) await refresh()
       }
     }).catch((reason: unknown) => { if (alive) setError(message(reason)) })
     return () => { alive = false }
@@ -67,7 +68,6 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
     try { await action() } catch (reason: unknown) { setError(message(reason)) } finally { setBusy(false) }
   }
   const active = terminals.find(t => t.id === selected)
-  const choices = profiles.filter(p => p.provider === provider)
   const running = workspace?.status === 'RUNNING' && workspace.desired === 'RUNNING'
   const stopped = workspace?.status === 'STOPPED'
   return (
@@ -140,24 +140,20 @@ export function RemoteWorkspacePanel({ project }: { project: Project }) {
               </Box> : null}
               {running ? (
                 <>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                    <TextField select label="Terminal type" value={provider} onChange={e => { setProvider(e.target.value as WorkspaceTerminal['provider']); setProfile('') }} sx={{ minWidth: 140 }}>
-                      <MenuItem value="SHELL">Shell</MenuItem><MenuItem value="CLAUDE">Claude</MenuItem><MenuItem value="CODEX">Codex</MenuItem>
-                    </TextField>
-                    {provider !== 'SHELL' ? <TextField select label="AI profile" value={profile} onChange={e => setProfile(e.target.value)} sx={{ minWidth: 180 }}>
-                      <MenuItem value="">Select your profile</MenuItem>{choices.map(p => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
-                    </TextField> : null}
-                    <Button disabled={busy || (provider !== 'SHELL' && !profile)} onClick={() => void run(async () => {
-                      const t = await api.workspaces.openTerminal(workspace.id, provider, provider === 'SHELL' ? null : profile)
-                      setTerminals(ts => [...ts, t]); setSelected(t.id)
-                    })}>Open terminal</Button>
-                  </Stack>
-                  <Typography variant="body2">Profile terminals open a shell for your selected account. Run claude and /login, or codex login --device-auth followed by codex. <Link to="/settings">Manage profiles</Link></Typography>
+                  <Button disabled={busy} onClick={event => setTerminalAnchor(event.currentTarget)}>Open terminal</Button>
+                  <TerminalMenu anchorEl={terminalAnchor} onClose={() => setTerminalAnchor(null)} profiles={profiles} onManage={() => setTerminalAnchor(null)} onChoose={(launchMode, profileId) => {
+                      setTerminalAnchor(null)
+                      void run(async () => {
+                        const t = await api.workspaces.openTerminal(workspace.id, launchMode, profileId)
+                        setTerminals(ts => [...ts, t]); setSelected(t.id)
+                      })
+                    }} />
+                  <Typography variant="body2">Choose a profile shell or start its CLI directly. Sign in on first use; your login is kept between workspaces. <Link to="/settings">Manage profiles</Link></Typography>
                   <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-                    {terminals.map((t, index) => <Button key={t.id} size="small" variant={selected === t.id ? 'contained' : 'outlined'} onClick={() => setSelected(t.id)}>{t.provider} {index + 1}</Button>)}
+                    {terminals.map(t => <Button key={t.id} size="small" variant={selected === t.id ? 'contained' : 'outlined'} onClick={() => setSelected(t.id)}>{terminalLabel(t, profiles, terminals)}</Button>)}
                   </Stack>
                   {active ? <>
-                    <TerminalPane terminal={active} />
+                    <TerminalPane terminal={active} title={terminalLabel(active, profiles, terminals)} />
                     <Button color="warning" disabled={busy} onClick={() => void run(async () => {
                       await api.workspaces.closeTerminal(workspace.id, active.id)
                       setSelected(''); await refresh()
