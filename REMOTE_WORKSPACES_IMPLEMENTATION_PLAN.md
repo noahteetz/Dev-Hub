@@ -24,9 +24,9 @@ Multi-Agent-Steuerung/Worktrees (Phase 8), gemeinsame Live-Terminals zwischen Nu
 | Bereich | Tatsächlicher Stand | Konsequenz |
 | --- | --- | --- |
 | Produktkonzept | [Roadmap](PRODUCT_ROADMAP.md), Kapitel 10 und Phase 7, beschreiben Isolation, Profile, Workspace-Rolle, Terminal und Bereinigung | Diese Festlegungen übernehmen |
-| Nutzer/Projektrechte | [CurrentUser](backend/src/main/java/com/devhub/backend/security/CurrentUser.java), [ProjectAccessService](backend/src/main/java/com/devhub/backend/service/ProjectAccessService.java), OWNER/EDITOR/VIEWER | Workspace zusätzlich an ausführenden Nutzer und aktuelle Projektberechtigung binden |
-| Git-Integration | Repository-Discovery/Metadaten und persönliche verschlüsselte PATs über [GitCredentialService](backend/src/main/java/com/devhub/backend/service/GitCredentialService.java) | Wiederverwenden, aber Clone/Fetch/Push und Runner-Zugang neu entwickeln |
-| Git-URL-Erkennung | [RepositoryUrlParser](backend/src/main/java/com/devhub/backend/service/RepositoryUrlParser.java) | Metadatenparser ist keine ausreichende Validierung einer ausführbaren Clone-URL |
+| Nutzer/Projektrechte | [CurrentUser](backend/src/main/java/de/noahteetz/backend/security/CurrentUser.java), [ProjectAccessService](backend/src/main/java/de/noahteetz/backend/service/ProjectAccessService.java), OWNER/EDITOR/VIEWER | Workspace zusätzlich an ausführenden Nutzer und aktuelle Projektberechtigung binden |
+| Git-Integration | Repository-Discovery/Metadaten und persönliche verschlüsselte PATs über [GitCredentialService](backend/src/main/java/de/noahteetz/backend/service/GitCredentialService.java) | Wiederverwenden, aber Clone/Fetch/Push und Runner-Zugang neu entwickeln |
+| Git-URL-Erkennung | [RepositoryUrlParser](backend/src/main/java/de/noahteetz/backend/service/RepositoryUrlParser.java) | Metadatenparser ist keine ausreichende Validierung einer ausführbaren Clone-URL |
 | Anmeldung | JWT mit Issuer/Audience-Prüfung, persönliche Daten, Keycloak-Realm | REST-Featureberechtigung und separate Ticket-Authentifizierung für WebSockets ergänzen |
 | Projektoberfläche | [ProjectWorkspace](frontend/src/components/ProjectWorkspace.tsx) zeigt Inhalte und Kontext | Bestehender Name bezeichnet noch keine ausführbare Umgebung; Remote-Bereich ergänzen |
 | Infrastruktur | [Produktions-Compose](deploy/docker-compose.yml), Traefik, Keycloak, PostgreSQL, GHCR/SSH-Deployment | Noch kein Runner, keine Workspace-Volumes und keine Terminal-Routen |
