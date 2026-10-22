@@ -75,9 +75,9 @@ Preserve the workspace's established terminal directory. On current `main` this 
 | [AiProfilesPanel](frontend/src/components/AiProfilesPanel.tsx) | One provider per named profile | Name plus provider checkboxes, edit support, provider badges |
 | [RemoteWorkspacePanel](frontend/src/components/RemoteWorkspacePanel.tsx) | Select type, then profile | Shared profile/launch menu |
 | [WorkspacesView](frontend/src/components/WorkspacesView.tsx) | One menu entry per provider-bound profile | Shell and CLI entries per named profile; shared labeling |
-| [WorkspaceModels](backend/src/main/java/com/devhub/backend/workspace/WorkspaceModels.java) | `Profile.provider`; terminal `provider` also selects configuration | Profile provider collection and explicit terminal launch mode |
-| [WorkspaceService](backend/src/main/java/com/devhub/backend/workspace/WorkspaceService.java) | Profile must match one provider; Shell discards profile ID | Validate profile-backed shells and selected CLI against enabled providers |
-| [WorkspaceRepository](backend/src/main/java/com/devhub/backend/workspace/WorkspaceRepository.java) | One provider column per profile | Provider membership table and terminal configuration snapshots |
+| [WorkspaceModels](backend/src/main/java/de/noahteetz/backend/workspace/WorkspaceModels.java) | `Profile.provider`; terminal `provider` also selects configuration | Profile provider collection and explicit terminal launch mode |
+| [WorkspaceService](backend/src/main/java/de/noahteetz/backend/workspace/WorkspaceService.java) | Profile must match one provider; Shell discards profile ID | Validate profile-backed shells and selected CLI against enabled providers |
+| [WorkspaceRepository](backend/src/main/java/de/noahteetz/backend/workspace/WorkspaceRepository.java) | One provider column per profile | Provider membership table and terminal configuration snapshots |
 | [Runner manager](runner/src/manager.mjs) | Sets one provider variable and always opens a shell | Bind enabled providers and pass a validated startup mode |
 | [Profile shell](runner/workspace/profile-shell.sh) and [bash initialization](runner/workspace/devhub-bashrc) | Interactive shell only | One-time CLI startup after shell initialization, then shell fallback |
 | [Profile initialization](runner/workspace/profile-init.sh) | Creates one provider/profile directory | Reuse once for each enabled provider |
