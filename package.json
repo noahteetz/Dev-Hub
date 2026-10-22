@@ -20,6 +20,6 @@
     "logs": "docker compose logs --follow"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.6"
   }
 }

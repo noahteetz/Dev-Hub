@@ -12,17 +12,17 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/
     && apt-get update && apt-get install -y --no-install-recommends postgresql-${POSTGRES_MAJOR} \
     && rm -rf /var/lib/apt/lists/*
 # System libraries for headless Chromium. Projects install the browser matching their own Playwright version into $HOME.
-ARG PLAYWRIGHT_VERSION=1.63.0
+ARG PLAYWRIGHT_VERSION=1.64.1
 RUN npx --yes playwright@${PLAYWRIGHT_VERSION} install-deps chromium \
     && rm -rf /var/lib/apt/lists/* /root/.npm
-ARG GH_VERSION=2.102.0
+ARG GH_VERSION=2.103.0
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
        > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh=${GH_VERSION} \
     && rm -rf /var/lib/apt/lists/*
-ARG CLAUDE_VERSION=2.1.292
-ARG CODEX_VERSION=0.160.1
+ARG CLAUDE_VERSION=2.1.308
+ARG CODEX_VERSION=0.163.0
 RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
