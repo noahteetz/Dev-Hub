@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim AS node
 FROM eclipse-temurin:25-jdk-noble
 COPY --from=node /usr/local/ /usr/local/
 RUN apt-get update && apt-get install -y --no-install-recommends git tmux curl ca-certificates python3 procps \
-       jq ripgrep make zip unzip xz-utils sqlite3 libicu74 \
+       jq ripgrep make zip unzip xz-utils sqlite3 libicu74 build-essential pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 # PostgreSQL server for throwaway test databases (see devhub-postgres); no cluster is created at build time.
 ARG POSTGRES_MAJOR=18
@@ -21,8 +21,17 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o 
        > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update && apt-get install -y --no-install-recommends gh=${GH_VERSION} \
     && rm -rf /var/lib/apt/lists/*
-ARG CLAUDE_VERSION=2.1.308
-ARG CODEX_VERSION=0.163.0
+# Rust toolchain for all users; owned by the workspace user so rust-toolchain.toml and rustup target/component add work.
+# At runtime CARGO_HOME points into the home volume, so the registry cache and cargo install survive Stop/Resume.
+ARG RUST_VERSION=1.99.1
+ENV RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+       | CARGO_HOME=/usr/local/cargo sh -s -- -y --no-modify-path --profile minimal \
+         --default-toolchain ${RUST_VERSION} --component rustfmt,clippy,rust-analyzer \
+    && rustup set auto-self-update disable \
+    && chown -R 1000:1000 /usr/local/rustup /usr/local/cargo
+ARG CLAUDE_VERSION=2.1.309
+ARG CODEX_VERSION=0.164.0
 RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
@@ -36,7 +45,7 @@ COPY git-credential.mjs /usr/local/bin/devhub-git-credential
 COPY gh-wrapper.sh /usr/local/bin/gh
 RUN chmod 0755 /usr/local/bin/bootstrap.sh /usr/local/bin/profile-init.sh /usr/local/bin/profile-shell.sh /usr/local/bin/devhub-git-credential /usr/local/bin/gh \
     /usr/local/bin/devhub-postgres
-ENV HOME=/home/workspace LANG=C.UTF-8 TERM=xterm-256color POSTGRES_MAJOR=${POSTGRES_MAJOR}
+ENV HOME=/home/workspace CARGO_HOME=/home/workspace/.cargo LANG=C.UTF-8 TERM=xterm-256color POSTGRES_MAJOR=${POSTGRES_MAJOR}
 USER 1000:1000
 WORKDIR /workspace
 CMD ["sleep", "infinity"]

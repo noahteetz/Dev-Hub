@@ -2,8 +2,8 @@ devhub_launch_mode="${DEVHUB_INITIAL_MODE:-SHELL}"
 unset DEVHUB_INITIAL_MODE
 if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc"; fi
 umask 077
-# Per-user toolchains (dotnet-install.sh, Godot, ...) live in the home volume and survive Stop/Resume.
-PATH="$PATH:$HOME/.local/bin:$HOME/.dotnet:$HOME/.dotnet/tools"
+# Per-user toolchains (dotnet-install.sh, Godot, cargo install, ...) live in the home volume and survive Stop/Resume.
+PATH="$PATH:$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.dotnet:$HOME/.dotnet/tools"
 export DOTNET_ROOT="$HOME/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1
 case "$devhub_launch_mode" in
     CLAUDE)
