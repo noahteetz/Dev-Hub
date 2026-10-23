@@ -30,8 +30,8 @@ RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
          --default-toolchain ${RUST_VERSION} --component rustfmt,clippy,rust-analyzer \
     && rustup set auto-self-update disable \
     && chown -R 1000:1000 /usr/local/rustup /usr/local/cargo
-ARG CLAUDE_VERSION=2.1.308
-ARG CODEX_VERSION=0.163.0
+ARG CLAUDE_VERSION=2.1.309
+ARG CODEX_VERSION=0.164.0
 RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
