@@ -71,8 +71,8 @@ test('real Docker: clone, private profiles, terminal reconnect, stop/resume, lim
   assert.equal((await read('curl', '-s', '--noproxy', '', '--proxy', 'http://egress:3128', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '5', 'http://127.0.0.1/')).output.trim(), '403');
   // Local dev servers are reached directly, not through the proxy that blocks loopback.
   assert.equal((await read('bash', '-c', 'python3 -m http.server 8765 -d /tmp >/dev/null 2>&1 & server=$!; trap "kill $server" EXIT; for i in $(seq 50); do curl -sf -o /dev/null http://localhost:8765/ && exit 0; sleep 0.1; done; exit 1')).code, 0);
-  // Compiling and linking a crate needs the C toolchain next to cargo.
-  assert.equal((await read('bash', '-c', 'cd "$(mktemp -d)" && cargo new --vcs none --quiet hello && cargo run --quiet --manifest-path hello/Cargo.toml')).code, 0);
+  // Compiling and linking a crate needs the C toolchain next to cargo; /tmp is noexec, so the crate is built in the home volume.
+  assert.equal((await read('bash', '-c', 'dir="$(mktemp -d -p "$HOME")" && trap "rm -rf $dir" EXIT && cd "$dir" && cargo new --vcs none --quiet hello && cargo run --quiet --manifest-path hello/Cargo.toml')).code, 0);
   assert.equal((await read('bash', '-c', 'devhub-postgres start ci && psql "$(devhub-postgres url ci)" -Atc "select 1" && devhub-postgres reset')).code, 0);
   await manager.initVolumes({id: otherId, ownerId: otherOwner});
   const isolated = await manager.docker.request('POST', '/containers/create', manager.config({id: otherId, ownerId: otherOwner}, {init: true}));
