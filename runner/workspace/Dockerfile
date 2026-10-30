@@ -15,7 +15,7 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/
 ARG PLAYWRIGHT_VERSION=1.64.1
 RUN npx --yes playwright@${PLAYWRIGHT_VERSION} install-deps chromium \
     && rm -rf /var/lib/apt/lists/* /root/.npm
-ARG GH_VERSION=2.103.0
+ARG GH_VERSION=2.103.3
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
        > /etc/apt/sources.list.d/github-cli.list \
@@ -30,8 +30,8 @@ RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
          --default-toolchain ${RUST_VERSION} --component rustfmt,clippy,rust-analyzer \
     && rustup set auto-self-update disable \
     && chown -R 1000:1000 /usr/local/rustup /usr/local/cargo
-ARG CLAUDE_VERSION=2.1.309
-ARG CODEX_VERSION=0.164.0
+ARG CLAUDE_VERSION=2.1.314
+ARG CODEX_VERSION=0.166.0
 RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
@@ -41,6 +41,7 @@ COPY bootstrap.sh profile-init.sh profile-shell.sh /usr/local/bin/
 COPY devhub-postgres.sh /usr/local/bin/devhub-postgres
 COPY terminal-launcher-version /usr/local/share/devhub-terminal-version
 COPY devhub-bashrc /usr/local/share/devhub-bashrc
+COPY tmux.conf /etc/tmux.conf
 COPY git-credential.mjs /usr/local/bin/devhub-git-credential
 COPY gh-wrapper.sh /usr/local/bin/gh
 RUN chmod 0755 /usr/local/bin/bootstrap.sh /usr/local/bin/profile-init.sh /usr/local/bin/profile-shell.sh /usr/local/bin/devhub-git-credential /usr/local/bin/gh \
