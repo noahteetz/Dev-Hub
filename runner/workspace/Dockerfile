@@ -41,6 +41,7 @@ COPY bootstrap.sh profile-init.sh profile-shell.sh /usr/local/bin/
 COPY devhub-postgres.sh /usr/local/bin/devhub-postgres
 COPY terminal-launcher-version /usr/local/share/devhub-terminal-version
 COPY devhub-bashrc /usr/local/share/devhub-bashrc
+COPY tmux.conf /etc/tmux.conf
 COPY git-credential.mjs /usr/local/bin/devhub-git-credential
 COPY gh-wrapper.sh /usr/local/bin/gh
 RUN chmod 0755 /usr/local/bin/bootstrap.sh /usr/local/bin/profile-init.sh /usr/local/bin/profile-shell.sh /usr/local/bin/devhub-git-credential /usr/local/bin/gh \

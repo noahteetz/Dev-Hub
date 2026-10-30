@@ -2,6 +2,8 @@ import { Alert, Box, Button, Stack, Typography } from '@mui/material'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import { ClipboardAddon } from '@xterm/addon-clipboard'
 import '@xterm/xterm/css/xterm.css'
 import { api } from '../api'
 import type { WorkspaceTerminal } from '../types'
@@ -28,9 +30,23 @@ export function TerminalPane({ terminal, title, actions, fill = false }: Termina
     let queuedOutput = 0
     let renewal: ReturnType<typeof setInterval> | null = null
     const term = new Terminal({ cursorBlink: true, convertEol: false, scrollback: 3000, fontSize: 13,
-      theme: { background: '#10141c', foreground: '#e6edf3' } })
+      macOptionClickForcesSelection: true, theme: { background: '#10141c', foreground: '#e6edf3' } })
     const fit = new FitAddon()
     term.loadAddon(fit)
+    term.loadAddon(new WebLinksAddon((event, uri) => { event.preventDefault(); window.open(uri, '_blank', 'noopener,noreferrer') }))
+    // OSC 52 from tmux/CLIs (e.g. a login URL) reaches the browser clipboard; the workspace may not read it.
+    term.loadAddon(new ClipboardAddon(undefined, {
+      readText: () => Promise.resolve(''),
+      writeText: (_selection, text) => navigator.clipboard.writeText(text),
+    }))
+    // Ctrl+C copies when text is selected (Shift+drag inside TUIs), Ctrl+Shift+C always copies; otherwise Ctrl+C stays ^C.
+    term.attachCustomKeyEventHandler(event => {
+      if (event.type !== 'keydown' || !event.ctrlKey || event.altKey || event.metaKey || event.key.toLowerCase() !== 'c') return true
+      if (!event.shiftKey && !term.hasSelection()) return true
+      if (term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => setError('Copy to clipboard was blocked by the browser.'))
+      event.preventDefault()
+      return false
+    })
     term.open(container.current)
     fit.fit()
     function resize() {
@@ -106,7 +122,7 @@ export function TerminalPane({ terminal, title, actions, fill = false }: Termina
       </Stack>
       {error ? <Alert severity="error">{error}</Alert> : null}
       <Box ref={container} aria-label="Remote terminal" sx={{ bgcolor: '#10141c', borderRadius: 1, p: 1, overflow: 'hidden', ...(fill ? { flex: 1, minHeight: 120 } : { height: 440 }) }} />
-      {fill ? null : <Typography color="text.secondary" variant="caption">Closing this panel disconnects the browser. Stop ends processes and keeps your files.</Typography>}
+      {fill ? null : <Typography color="text.secondary" variant="caption">Shift+drag selects text, Ctrl+Shift+C copies, links open on click. Closing this panel disconnects the browser. Stop ends processes and keeps your files.</Typography>}
     </Stack>
   )
 }
