@@ -2,11 +2,11 @@ import { Alert, Box, Button, Stack, Typography } from '@mui/material'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { WebLinksAddon } from '@xterm/addon-web-links'
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import '@xterm/xterm/css/xterm.css'
 import { api } from '../api'
 import type { WorkspaceTerminal } from '../types'
+import { createUrlLinkProvider } from './terminalLinks'
 
 interface TerminalPaneProps {
   terminal: WorkspaceTerminal
@@ -33,7 +33,8 @@ export function TerminalPane({ terminal, title, actions, fill = false }: Termina
       macOptionClickForcesSelection: true, theme: { background: '#10141c', foreground: '#e6edf3' } })
     const fit = new FitAddon()
     term.loadAddon(fit)
-    term.loadAddon(new WebLinksAddon((event, uri) => { event.preventDefault(); window.open(uri, '_blank', 'noopener,noreferrer') }))
+    // Own provider instead of the web-links addon: that one only sees the first line of a URL that tmux/CLIs hard-wrap.
+    term.registerLinkProvider(createUrlLinkProvider(term, uri => { window.open(uri, '_blank', 'noopener,noreferrer') }))
     // OSC 52 from tmux/CLIs (e.g. a login URL) reaches the browser clipboard; the workspace may not read it.
     term.loadAddon(new ClipboardAddon(undefined, {
       readText: () => Promise.resolve(''),
