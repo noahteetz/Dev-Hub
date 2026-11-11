@@ -1,7 +1,12 @@
+ARG UV_VERSION=0.13.7
 FROM node:22-bookworm-slim AS node
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 FROM eclipse-temurin:25-jdk-noble
 COPY --from=node /usr/local/ /usr/local/
-RUN apt-get update && apt-get install -y --no-install-recommends git tmux curl ca-certificates python3 procps \
+# uv/uvx as Python package manager: system pip is blocked by PEP 668, so packages go into venvs (uv venv, python3 -m venv)
+# or are run as tools (uvx, uv tool install -> ~/.local/bin). Cache and uv-managed Pythons live in the home volume.
+COPY --from=uv /uv /uvx /usr/local/bin/
+RUN apt-get update && apt-get install -y --no-install-recommends git tmux curl ca-certificates python3 python3-venv python3-dev procps \
        jq ripgrep make zip unzip xz-utils sqlite3 libicu74 build-essential pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 # PostgreSQL server for throwaway test databases (see devhub-postgres); no cluster is created at build time.
@@ -12,7 +17,7 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/
     && apt-get update && apt-get install -y --no-install-recommends postgresql-${POSTGRES_MAJOR} \
     && rm -rf /var/lib/apt/lists/*
 # System libraries for headless Chromium. Projects install the browser matching their own Playwright version into $HOME.
-ARG PLAYWRIGHT_VERSION=1.64.1
+ARG PLAYWRIGHT_VERSION=1.65.0
 RUN npx --yes playwright@${PLAYWRIGHT_VERSION} install-deps chromium \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 ARG GH_VERSION=2.103.3
@@ -30,8 +35,8 @@ RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
          --default-toolchain ${RUST_VERSION} --component rustfmt,clippy,rust-analyzer \
     && rustup set auto-self-update disable \
     && chown -R 1000:1000 /usr/local/rustup /usr/local/cargo
-ARG CLAUDE_VERSION=2.1.319
-ARG CODEX_VERSION=0.166.0
+ARG CLAUDE_VERSION=2.1.322
+ARG CODEX_VERSION=0.167.1
 RUN npm install --global @anthropic-ai/claude-code@${CLAUDE_VERSION} @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
@@ -46,7 +51,7 @@ COPY git-credential.mjs /usr/local/bin/devhub-git-credential
 COPY gh-wrapper.sh /usr/local/bin/gh
 RUN chmod 0755 /usr/local/bin/bootstrap.sh /usr/local/bin/profile-init.sh /usr/local/bin/profile-shell.sh /usr/local/bin/devhub-git-credential /usr/local/bin/gh \
     /usr/local/bin/devhub-postgres
-ENV HOME=/home/workspace CARGO_HOME=/home/workspace/.cargo LANG=C.UTF-8 TERM=xterm-256color POSTGRES_MAJOR=${POSTGRES_MAJOR}
+ENV HOME=/home/workspace CARGO_HOME=/home/workspace/.cargo UV_LINK_MODE=copy LANG=C.UTF-8 TERM=xterm-256color POSTGRES_MAJOR=${POSTGRES_MAJOR}
 USER 1000:1000
 WORKDIR /workspace
 CMD ["sleep", "infinity"]
